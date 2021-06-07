@@ -2186,7 +2186,7 @@ function gentelella_interface_envoyer_email($mail_id){
 
     $params['subject'] =	$emw_node->title->value();
     $params['body'] =	$emw_node->body->value()['value'];
-    $params['Reply-To'] =	$emw_node->field_email_reply_to_address->value(); //"info@lepetitpeuple.org";
+    $params['Reply-To'] =	$emw_node->field_email_reply_to_address->value(); //"info@test123.org";
     $params['headers']['From'] = $destinateur;
     $params['headers']['Sender'] = $destinateur;
     $params['headers']['Return-Path'] = $destinateur;
@@ -2221,8 +2221,8 @@ function gentelella_interface_envoyer_email($mail_id){
 
 /*
 function getelella_interface_cron() {
-  $sendto = "pierrelucueisd@gmail.com";
-  $from = "info@lepetitpeuple.org";
+  $sendto = "test123@gmail.com";
+  $from = "test123@test123.org";
   $params = array();
   $params['subject'] =	"test cron";
   $params['body'] =	"ceci est un test cron";
