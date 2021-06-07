@@ -1,0 +1,6 @@
+name = Field dnd
+description = "dnd"
+package = Sitemap
+core = 7.x
+dependencies[] = mailhandler
+;

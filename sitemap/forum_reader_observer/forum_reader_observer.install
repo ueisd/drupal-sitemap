@@ -1,0 +1,29 @@
+<?php
+function forum_reader_observer_schema() {
+  $schema['forum_reader_observer'] = array(
+    'description' => 'The base table for observing viewed discussion messages.',
+    'fields' => array(
+      'nid'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
+      'uid'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
+      'seen'      => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+    ),
+    'indexes' => array(
+      'nid'                 => array('nid'),
+      'uid'                 => array('uid'),
+    ),
+    // For documentation purposes only; foreign keys are not created in the
+    // database.
+    'foreign keys' => array(
+      'node_revision' => array(
+        'table' => 'node',
+        'columns' => array('nid' => 'nid'),
+       ),
+      'node_viewer' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+       ),
+     ),
+    'primary key' => array('nid', 'uid'),
+  );
+  return $schema;
+}

@@ -1,0 +1,39 @@
+<?php
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function test_widget_field_widget_info() {
+  return array(
+    'rgb_textfield' => array(
+      'label' => t('RGB Textfields'),
+      'field types' => array('rgb_color'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_form().
+ */
+function test_widget_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+
+  if ($field['cardinality'] == 1) {
+    $element['#type'] = 'fieldset';
+  }
+
+  $element['rgb'] = array(
+    '#type' => 'textfield',
+    '#field_prefix' => t('RGB: #'),
+    '#size' => 6,
+    '#default_value' => isset($items[$delta]['rgb']) ? $items[$delta]['rgb'] : '',
+  );
+
+  $element['label'] = array(
+    '#type' => 'textfield',
+    '#field_prefix' => t('Color name: '),
+    '#default_value' => isset($items[$delta]['label']) ? $items[$delta]['label'] : '',
+  );
+
+  return $element;
+}
+

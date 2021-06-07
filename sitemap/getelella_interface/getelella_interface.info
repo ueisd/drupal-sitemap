@@ -1,0 +1,9 @@
+name = Getelella interface
+description = "Définit un ensemble de pages"
+package = Sitemap
+core = 7.x
+
+dependencies[] = ctools
+dependencies[] = user
+dependencies[] = panels
+;

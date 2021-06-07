@@ -1,0 +1,9 @@
+name = Permission reference
+description = "Définit un chapf référençant les permissions"
+package = Sitemap
+core = 7.x
+dependencies[] = field
+dependencies[] = og_role_field
+dependencies[] = og
+dependencies[] = og_ui
+;

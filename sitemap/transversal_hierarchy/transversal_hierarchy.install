@@ -1,0 +1,75 @@
+<?php
+function transversal_hierarchy_enable() {
+  // Check if our field is not already created.
+  if (!field_info_field('groupe_parents_tranversaux')) {
+    $field = array(
+      'field_name' => 'groupe_parents_tranversaux',
+      'type' => 'entityreference',
+      'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+      "settings"=>array(
+        "referenceable_types"=>array(
+          "groupe"=>"groupe"
+        ),
+      ),
+
+    );
+    field_create_field($field);
+
+    // Create the instance on the bundle.
+    $instance = array(
+      'field_name' => 'groupe_parents_tranversaux',
+      'entity_type' => 'node',
+      'bundle' => 'groupe',
+      'label' => 'groupe transversaux',
+      'widget' => array(
+        'type' => 'options_select',
+      ),
+    );
+    field_create_instance($instance);
+  }
+}
+
+function transversal_hierarchy_schema_alter(&$schema) {
+  $schema['og_role']['fields']['par_trans'] = array(
+    'type' => 'int',
+    'default' => 0,
+     'size' => 'normal',
+    'description' => 'Rid of the transversal role that it inherit',
+  );
+  $schema['og_role']['fields']['de_transv'] = array(
+    'description' => '0 pas transversal sinon 1',
+    'type' => 'int',
+    'size' => 'tiny',
+    'not null' => TRUE,
+    'default' => 0,
+  );
+
+  $schema['og_role']['foreign keys']['par_trans'] = array(
+        'table' => 'og_role',
+        'columns' => array('par_trans' => 'rid'),
+  );
+}
+
+function transversal_hierarchy_update_7100() {
+  $spec = array(
+    'type' => 'int',
+    'default' => 0,
+     'size' => 'normal',
+    'description' => 'Rid of the transversal role that it inherit',
+  );
+  db_add_field('og_role', 'par_trans', $spec);
+}
+
+function transversal_hierarchy_update_7201() {
+  $spec = array(
+    'description' => '0 pas transversal sinon 1',
+    'type' => 'int',
+    'size' => 'tiny',
+    'not null' => TRUE,
+    'default' => 0,
+  );
+  db_add_field('og_role', 'de_transv', $spec);
+}
+
+
+

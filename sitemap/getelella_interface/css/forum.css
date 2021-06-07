@@ -1,0 +1,100 @@
+/*
+.test1 {
+	background-color: red;
+}
+
+.test2 {
+  background-color: blue;
+}
+
+.test3 {
+  background-color: yellow;
+}
+
+.test4 {
+  background-color: white;
+}
+*/
+
+.block-100 {
+	display: block;
+	width: 100%;
+}
+
+.inline-block {
+	align-items: stretch;
+  display: flex;
+  align-content: stretch;
+}
+
+.justify-right {
+  justify-content: flex-end;
+}
+
+.inline-block > *{
+  align-self: center;
+}
+
+.row-eq-height {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: -ms-flexbox;
+  display:         flex;
+  flex-wrap : wrap;
+  justify-content: flex-end;
+}
+
+.titre {
+	font-size: 20px;
+}
+
+.testeee {
+	background: #f7f7f7 none repeat scroll 0 0;
+  display: block;
+  margin: 6px 6px 0;
+  padding: 10px;
+}
+
+.testeee:hover {
+	cursor: pointer;
+}
+
+#form-wrapper{
+  display : none;
+}
+
+#form-wrapper .filter-wrapper{
+  display : none;
+}
+
+#liste_message_discussion {
+	display: block;
+	overflow : auto;
+	height: 500px;
+	padding: 50px;
+}
+
+
+#liste_discussion {
+  overflow : auto;
+  height: 500px;
+}
+
+.loader {
+    border: 10px solid #f3f3f3; /* Light grey */
+    border-top: 10px solid #3498db; /* Blue */
+    border-radius: 50%;
+    width: 80px;
+    height: 80px;
+    animation: spin 2s linear infinite;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin-left: -40px;
+    margin-top: -40px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

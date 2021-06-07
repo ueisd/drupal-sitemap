@@ -1,0 +1,27 @@
+<?php
+
+/**
+ * Implements hook_field_schema()
+ */
+function role_reference_field_schema($field) {
+  $schema['columns'] = array(
+    'rid' => array(
+      'type' => 'int',
+      'description' => 'The role ID',
+      'unsigned' => TRUE,
+      'not null' => TRUE,
+    ),
+  );
+  $schema['indexes'] = array(
+    'rid' => array('rid')
+  );
+  $schema['foreign keys'] = array(
+    'group_role_fk' => array(
+      'table' => 'og_role',
+      'columns' => array(
+        'rid' => 'rid',
+      ),
+    ),
+  );
+  return $schema;
+}

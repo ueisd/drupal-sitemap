@@ -1,0 +1,55 @@
+.depot-central-full h2{
+  text-align:      center;
+  background-color: #E9EBEE;
+}
+.depot-central-full p {
+  text-align:      left;
+}
+
+
+.rapport-quotidien {
+    background-color: #eaecff;
+    border-radius: 4px 4px 0 0;
+    box-shadow: none;
+    border-color: #e5e5e5 #eee #eee;
+    border-style: solid;
+    border-width: 1px 0;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.05) inset;
+    position: relative;
+    text-align:      left;
+    margin: 0px 10px 30px 10px;
+}
+h4.media-heading {
+    color: inherit;
+    font-family: inherit;
+    font-weight: 500;
+    line-height: 1.1;
+    font-size: 18px;
+}
+.rapport-quotidien .header {
+  background-color: #4267B2;
+  color : #fff;
+  padding: 5px;
+  text-align: center;
+}
+.rapport-quotidien .corps{
+  padding: 10px 15px 15px;
+  background-color: #FFFFFF;
+}
+
+.rapport-quotidien p {
+    font-family: "OpenSans Regular","Montserrat","sans-serif","Source Sans Pro","Helvetica Neue",Helvetica,Arial,sans-serif;
+    font-size: 20px;
+}
+
+.node-depot-de-rapport-annuel .dropdown-menu {
+    top: 100% !important; 
+}
+.node-depot-de-rapport-annuel .dropdown-toggle .caret {
+    border-top: 4px dashed !important;
+    border-bottom: 0 none !important;
+}
+
+.rapport-quotidien .nav.nav-tabs li a {
+	font-size: 20px;
+}

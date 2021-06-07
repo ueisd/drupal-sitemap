@@ -1,0 +1,5 @@
+name = forum reader observer
+description = "Permet de savoir combien de message n'ont pas été lu par un utilisateur"
+package = Sitemap
+core = 7.x
+;

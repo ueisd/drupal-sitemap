@@ -1,0 +1,143 @@
+<?php
+/**
+ * @file
+ * An example field using the Field Types API.
+ */
+
+/**
+ * @defgroup field_example Example: Field Types API
+ * @ingroup examples
+ * @{
+ * Examples using Field Types API.
+ *
+ * This is updated from Barry Jaspan's presentation at Drupalcon Paris,
+ * @link http://acquia.com/community/resources/acquia-tv/intro-field-api-module-developers Video Presentation @endlink
+ *
+ * Providing a field requires:
+ * - Defining a field:
+ *   - hook_field_info()
+ *   - hook_field_schema()
+ *   - hook_field_validate()
+ *   - hook_field_is_empty()
+ *
+ * - Defining a formatter for the field (the portion that outputs the field for
+ *   display):
+ *   - hook_field_formatter_info()
+ *   - hook_field_formatter_view()
+ *
+ * - Defining a widget for the edit form:
+ *   - hook_field_widget_info()
+ *   - hook_field_widget_form()
+ *
+ * Our module defines the field in field_example_field_info(),
+ * field_example_field_validate() and field_example_field_is_empty().
+ * field_example_field_schema() is implemented in field_example.install.
+ *
+ * Our module sets up a formatter in field_example_field_formatter_info() and
+ * field_example_field_formatter_view(). These are the API hooks that present
+ * formatted and themed output to the user.
+ *
+ * And finally, our module defines the widget in
+ * field_example_field_widget_info() and field_example_field_widget_form().
+ * The widget is the form element used to receive input from the user
+ * when the field is being populated.
+ *
+ * @see field_types
+ * @see field
+ */
+
+/***************************************************************
+ * Field Type API hooks
+ ***************************************************************/
+
+define('FIELD_MAILBOX_REFERENCE_FIELD_LABEL', 'Node Role Reference ok');
+define('FIELD_MAILBOX_REFERENCE_FIELD_TYPE', 'field_mailbox_reference');
+define('FIELD_MAILBOX_REFERENCE_FIELD_FORMATTER_PLAIN', 'field_mailbox_reference_field_formatter_plain');
+
+function field_mailbox_reference_field_info() {
+  return array(
+    FIELD_MAILBOX_REFERENCE_FIELD_TYPE => array(
+      'label' => t('mailbox reference sitemap'),
+      'field_name' => FIELD_MAILBOX_REFERENCE_FIELD_TYPE,
+      'description' => t('Stores the role(s) this entity references. This can be used for more finite access restrictions or selling access to certain roles.'),
+      'default_widget' => 'options_buttons',
+      'default_formatter' => FIELD_MAILBOX_REFERENCE_FIELD_FORMATTER_PLAIN,
+      'property_type' => 'text',
+    ),
+  );
+}
+
+function field_mailbox_reference_si_mailbox_utilise_par_autre_noeud($entity, $mail){
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+  ->entityCondition('bundle', 'boite_de_courriel')
+  ->propertyCondition('status', NODE_PUBLISHED)
+  ->fieldCondition('field_reference_mailbox', 'mailbox', $mail, '=');
+  if(isset($entity->nid)){
+    $query->propertyCondition('nid', $entity->nid, '!=');
+  }
+  $result2 = $query->execute();
+  return empty($result2);
+}
+
+function field_mailbox_reference_options_list($field, $instance, $entity_type, $entity) {
+  $mails = array();
+  $query = db_select('mailhandler_mailbox', 'm');
+  $query->fields('m', array('mail', 'admin_title'));
+  $result = $query->execute();
+  foreach ($result as $record) {
+    if(field_mailbox_reference_si_mailbox_utilise_par_autre_noeud($entity, $record->mail)){
+      $mails[$record->mail] = $record->admin_title;
+    }
+  }
+  return $mails;
+}
+
+
+/* Providing a field requires:*/
+function field_mailbox_reference_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors){
+  return;
+}
+
+function field_mailbox_reference_field_is_empty($item, $field){
+  return empty($item['mailbox']);
+}
+
+//Defining a formatter for the field (the portion that outputs the field for display):
+function field_mailbox_reference_field_formatter_info(){
+  return array(
+    FIELD_MAILBOX_REFERENCE_FIELD_FORMATTER_PLAIN => array(
+      'label' => t('Plain text'),
+      'description' => t("Display the name of the referenced role."),
+      'field types' => array(FIELD_MAILBOX_REFERENCE_FIELD_TYPE),
+    ),
+  );
+}
+
+
+
+
+
+function field_mailbox_reference_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display){
+  $result = array();
+  switch ($display['type']) {
+    case FIELD_MAILBOX_REFERENCE_FIELD_FORMATTER_PLAIN:
+    default:
+      foreach ($items as $delta => $item) {
+        $r =0;
+        $result[$delta] = array(
+          '#prefix' => '<span class="og-role-reference-role">',
+          '#markup' => $item['mailbox'],
+          '#suffix' => '</span>',
+        );
+      }
+    break;
+  }
+  return $result;
+}
+
+function field_mailbox_reference_field_widget_info_alter(&$info) {
+  // Offer up "checkboxes" and "radio buttons" as the field types.
+  $info['options_select']['field types'][] = FIELD_MAILBOX_REFERENCE_FIELD_TYPE;
+  $info['options_buttons']['field types'][] = FIELD_MAILBOX_REFERENCE_FIELD_TYPE;
+}

@@ -1,0 +1,916 @@
+<?php
+define('PERMISSION_REFERENCE_FIELD_LABEL', 'Permission Reference');
+define('PERMISSION_REFERENCE_FIELD_TYPE', 'node_permission_reference');
+define('PERMISSION_REFERENCE_FIELD_FORMATTER_PLAIN', 'node_node_permission_reference_field_formatter_plain');
+
+function permission_reference_field_info() {
+  return array(
+    PERMISSION_REFERENCE_FIELD_TYPE => array(
+      'label' => t('Permissions Reference role'),
+      'field_name' => PERMISSION_REFERENCE_FIELD_TYPE,
+      'description' => t('Stores the role(s) this entity references. This can be used for more finite access restrictions or selling access to certain roles.'),
+      'default_widget' => 'options_select',
+      'default_formatter' => PERMISSION_REFERENCE_FIELD_FORMATTER_PLAIN,
+      'property_type' => 'text',
+    ),
+  );
+}
+
+function permission_reference_options_list() {
+  $essai = user_permission_get_modules();
+  foreach(user_permission_get_modules() as $permission => $module){
+    if($module == "node"){
+      $permissions[$permission] = $permission;
+    }
+  }
+  /*$permissions +=  array(
+  'Authors' => array(
+    'Arthur C. Clark' => 'Arthur C. Clark',
+    'Frank Herbert' => 'Frank Herbert',
+    'Robert Heinlein' => 'Robert Heinlein',
+  ),
+  // — Second option group
+  'Authors' => array(
+    'Arthur C. Clark' => 'Arthur C. Clark',
+    'Frank Herbert' => 'Frank Herbert',
+    'Robert Heinlein' => 'Robert Heinlein',
+  ),
+  // — Third option group
+  'Genres' => array(
+    'Alien Invasion' => 'Alien Invasion',
+    'Space Wars' => 'Space Wars',
+    ),
+);*/
+  return $permissions;
+}
+/*
+ * function custommodule_update_7001() {
+  $permissions = array('view my custom entity');
+  foreach(array('anonymous user', 'authenticated user') as $role_name) {
+    $role = user_role_load_by_name($role_name);
+    user_role_grant_permissions($role->rid, $permissions);
+  }
+}
+ */
+
+
+/* Providing a field requires:*/
+     function permission_reference_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors){
+      return;
+     }
+
+     function permission_reference_field_is_empty($item, $field){
+        return empty($item['permission']);
+     }
+
+     //Defining a formatter for the field (the portion that outputs the field for display):
+     function permission_reference_field_formatter_info(){
+       return array(
+        PERMISSION_REFERENCE_FIELD_FORMATTER_PLAIN => array(
+          'label' => t('Plain text'),
+          'description' => t("Display the name of the referenced role."),
+          'field types' => array(PERMISSION_REFERENCE_FIELD_TYPE),
+        ),
+      );
+   }
+
+
+
+
+
+     function permission_reference_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display){
+        $result = array();
+        switch ($display['type']) {
+          case PERMISSION_REFERENCE_FIELD_FORMATTER_PLAIN:
+          default:
+            foreach ($items as $delta => $item) {
+              $result[$delta] = array(
+                '#prefix' => '<span class="og-role-reference-role">',
+                '#markup' => check_plain($item['permission']),
+                '#suffix' => '</span>',
+              );
+            }
+            break;
+        }
+        return $result;
+     }
+
+    function permission_reference_field_widget_info_alter(&$info) {
+      // Offer up "checkboxes" and "radio buttons" as the field types.
+      $info['options_select']['field types'][] = PERMISSION_REFERENCE_FIELD_TYPE;
+      $info['options_buttons']['field types'][] = PERMISSION_REFERENCE_FIELD_TYPE;
+    }
+
+     // Defining a widget for the edit form:
+     function permission_reference_field_widget_info(){
+      return array(
+        'text_textfield_essai' => array(
+          'label' => t('Test field permission custom widget'),
+          'field types' => array(PERMISSION_REFERENCE_FIELD_TYPE),
+        ),
+      );
+
+     }
+
+
+
+function poutine_maker_ignore_parent(&$form, &$form_state, $complete) {
+  array_pop($form['#parents']);
+  return $form;
+}
+
+
+function permission_reference_field_presave($entity_type, $entity, $field, $instance, $langcode, &$items) {
+  if ($field['type'] == 'number_decimal') {
+    // Let PHP round the value to ensure consistent behavior across storage
+    // backends.
+    /*foreach ($items as $delta => $item) {
+      if (isset($item['value'])) {
+        $items[$delta]['value'] = round($item['value'], $field['settings']['scale']);
+      }
+    }*/
+  }
+}
+
+     function permission_reference_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element){
+      $multiple = $field['cardinality'] > 1 || $field['cardinality'] == FIELD_CARDINALITY_UNLIMITED;
+       $options =  array(
+  'Authors' => array(
+    'Arthur C. Clark' => 'Arthur C. Clark',
+    'Frank Herbert' => 'Frank Herbert',
+    'Robert Heinlein' => 'Robert Heinlein',
+  ),
+  // — Second option group
+  'Authors' => array(
+    'Arthur C. Clark' => 'Arthur C. Clark',
+    'Frank Herbert' => 'Frank Herbert',
+    'Robert Heinlein' => 'Robert Heinlein',
+  ),
+  // — Third option group
+  'Genres' => array(
+    'Alien Invasion' => 'Alien Invasion',
+    'Space Wars' => 'Space Wars',
+    ),
+);
+      $element['permission']['options'] = $options;
+       /*switch ($instance['widget']['type']) {
+              case 'text_textfield_essai':
+                  $element['permission'] = array(
+                      '#type' => 'select',
+                      '#title' => t('Essai permission widget'),
+                      '#default_value' => isset($items[$delta]['permission']) ? $items[$delta]['permission'] : null,
+                      '#required' => $element['#required'],
+                      '#weight' => (int)$element['#weight'],
+                      '#delta' => $delta,
+                      '#options' => permission_reference_options_list(),
+                      '#multiple' => $multiple && count($options) > 1,
+                  );
+                  break;
+          }
+          return $element;*/
+
+  /*     $value_key = key($field['columns']);
+
+  $type = str_replace('options_', '', $instance['widget']['type']);
+  $multiple = $field['cardinality'] > 1 || $field['cardinality'] == FIELD_CARDINALITY_UNLIMITED;
+  $required = $element['#required'];
+  $has_value = isset($items[0][$value_key]);
+  $properties = _options_properties($type, $multiple, $required, $has_value);
+
+$options =  array(
+  'Authors' => array(
+    'Arthur C. Clark' => 'Arthur C. Clark',
+    'Frank Herbert' => 'Frank Herbert',
+    'Robert Heinlein' => 'Robert Heinlein',
+  ),
+  // — Second option group
+  'Authors' => array(
+    'Arthur C. Clark' => 'Arthur C. Clark',
+    'Frank Herbert' => 'Frank Herbert',
+    'Robert Heinlein' => 'Robert Heinlein',
+  ),
+  // — Third option group
+  'Genres' => array(
+    'Alien Invasion' => 'Alien Invasion',
+    'Space Wars' => 'Space Wars',
+    ),
+);
+
+  $entity_type = $element['#entity_type'];
+  $entity = $element['#entity'];
+*/
+  // Prepare the list of options.
+  //$options = _options_get_options($field, $instance, $properties, $entity_type, $entity);
+
+  // Put current field values in shape.
+ // $default_value = _options_storage_to_form($items, $options, $value_key, $properties);
+
+    /*$element += array(
+      '#type' => 'select',
+      '#default_value' => isset($items[$delta]['permission']) ? $items[$delta]['permission'] : null,
+      // Do not display a 'multiple' select box if there is only one option.
+      '#multiple' => $multiple && count($options) > 1,
+      '#options' => array("essai" => "essai", "essai2" => "essai2", "essai3", "essai3"),
+      '#value_key' => $value_key,
+      //'#element_validate' => array('options_field_widget_validate'),
+      '#properties' => $properties,
+      '#size' => $multiple ? max(12, count($options)) : 0,
+        '#delta' => $delta,
+    );*/
+
+    /*$process = array_merge($fieldset_info['#process'], array('poutine_maker_ignore_parent'));
+    $element['choix'] = array(
+      '#title' => t('Choix'),
+      '#type' => 'fieldset',
+      '#process' => $process,
+    );
+
+    $test = array("test" => "test", "test1" => "test1", "test2" => "test2");
+
+     foreach (permission_reference_options_list() as $meat_machine=>$meat) {
+      $element['choix'][$meat_machine] = array(
+        '#title' => t($meat),
+        '#type' => 'checkbox',
+        '#default_value' => isset($item[$meat_machine]) ? $item[$meat_machine] : '',
+      );
+    }*/
+
+    return $element;
+     }
+
+function permission_reference_og_permission_alter(&$perm){
+  //on trie
+  /*$ret = array();
+  foreach ($perm as $cle => $val){
+    if(!startsWith($cle, "permission_reference_deleguer_")){
+      $ret[$cle] = $val;
+      $cle_deleguer = "permission_reference_deleguer_" . $cle;
+      if(isset($perm[$cle_deleguer])){
+        $ret[$cle_deleguer] = $perm[$cle_deleguer];
+      }
+    }
+  }
+  $perm = $ret;*/
+}
+
+function startsWith($haystack, $needle) {
+     $length = strlen($needle);
+     return (substr($haystack, 0, $length) === $needle);
+}
+
+function permission_reference_og_permission(){
+  $perm = array();
+  foreach (module_implements('og_permission') as $module) {
+    if ( $module != "permission_reference"
+        && ($permissions = module_invoke($module, 'og_permission'))
+    ) {
+      if(!isset($val['description'])
+          || !($description = $val['description'])
+      ){
+          $description = "";
+      }
+      foreach($permissions as $nom_perm => $val){
+        $cle_perm_save = "permission_reference_deleguer_" . $nom_perm;
+        $perm[$cle_perm_save] = array(
+          'title' => "déléguer - " . $val['title'],
+          'description' => $description,
+          'roles' => array(OG_ANONYMOUS_ROLE, OG_AUTHENTICATED_ROLE),
+          'default role' => array(
+            OG_ANONYMOUS_ROLE,
+            OG_AUTHENTICATED_ROLE,
+            OG_ADMINISTRATOR_ROLE,
+                ),
+          'module' => $module,
+        );
+
+      }
+    }
+  }
+  return $perm;
+}
+
+function og_ui_menu_alter(&$items){
+  $items['group/%/%/admin/permission/%/edit']['page arguments'] = array('permission_reference_og_ui_admin_permissions', 1, 2, '', 5);
+  $items['group/%/%/admin/permission/%/edit']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['admin/config/group/permission/%/edit']['page arguments'] = array('permission_reference_og_ui_admin_permissions', '', '0', '', 4);
+  $items['admin/config/group/permission/%/edit']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/permissions']['page arguments'] = array('permission_reference_og_ui_admin_permissions', 1, 2);
+  $items['group/%/%/admin/permissions']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['admin/config/group/role/%/edit']['page arguments'] = array('permission_reference_og_ui_admin_roles', 1, 2);
+  $items['admin/config/group/role/%/edit']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/role/%/edit']['page arguments'] = array('permission_reference_og_ui_admin_roles', 1, 2, '', 5);
+  $items['group/%/%/admin/role/%/edit']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/roles']['page callback'] = 'permission_reference_og_ui_admin_new_role';
+  $items['group/%/%/admin/roles']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/people']['page callback'] = 'permission_reference_og_admin_people';
+  $items['group/%/%/admin/people']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/people/edit-membership/%og_membership']['page callback'] = 'permission_reference_og_ui_edit_membership';
+  $items['group/%/%/admin/people/edit-membership/%og_membership']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/people/delete-membership/%og_membership']['page callback'] = 'permission_reference_og_ui_delete_membership';
+  $items['group/%/%/admin/people/delete-membership/%og_membership']['theme callback'] = 'getelella_interface_gentelella_callback';
+
+  $items['group/%/%/admin/people/add-user']['page callback'] = 'permission_reference_og_ui_add_users';
+  $items['group/%/%/admin/people/add-user']['theme callback'] = 'getelella_interface_gentelella_callback';
+}
+
+function permission_reference_og_ui_add_users($form_id, $group_type, $gid){
+  if($gid){
+    global $gentelella_var;
+    $gentelella_var['context']['nid_groupe'] = $gid;
+  }
+  $form = drupal_get_form('og_ui_add_users', $group_type, $gid);
+  return drupal_render($form);
+}
+
+function permission_reference_og_ui_delete_membership($form_id, $group_type, $gid, $og_membership){
+  if($gid){
+    global $gentelella_var;
+    $gentelella_var['context']['nid_groupe'] = $gid;
+  }
+  $form = drupal_get_form('og_ui_delete_membership', $group_type, $gid, $og_membership);
+  return drupal_render($form);
+}
+
+
+function permission_reference_og_ui_edit_membership($form_id, $group_type, $gid, $og_membership){
+  if($gid){
+    global $gentelella_var;
+    $gentelella_var['context']['nid_groupe'] = $gid;
+  }
+  $form = drupal_get_form('og_ui_edit_membership', $group_type, $gid, $og_membership);
+  return drupal_render($form);
+}
+
+function permission_reference_og_admin_people($group_type, $gid){
+  if($gid){
+    global $gentelella_var;
+    $gentelella_var['context']['nid_groupe'] = $gid;
+  }
+  return og_ui_admin_account($group_type, $gid);
+}
+
+function permission_reference_og_ui_admin_new_role($form, $group_type = '', $gid = 0, $bundle = '', $rid = 0){
+  global $gentelella_var;
+  $gentelella_var['context']['nid_groupe'] = $gid;
+  $temp_form = drupal_get_form('og_ui_admin_new_role', $group_type, $gid);
+  return drupal_render($temp_form);
+}
+
+
+/**
+ * Menu callback: administer permissions.
+ *
+ * @param $group_type
+ *   Group entity type. E.g. 'node'.
+ * @param $gid
+ *   Group item ID.
+ * @param $bundle
+ *   Group bundle.
+ * @param $rid.
+ *   Role ID. When specified, edit only this role's permissions.
+ *
+ * @ingroup forms
+ * @see og_ui_admin_permissions_submit()
+ * @see theme_og_ui_admin_permissions()
+ */
+function permission_reference_base_og_ui_admin_permissions($form, $form_state, $group_type = '', $gid = 0, $bundle = '', $rid = 0) {
+  if ($rid) {
+    // Get group type and bundle from role.
+    $role = og_role_load($rid);
+    $bundle = $role->group_bundle;
+    $group_type = $role->group_type;
+  }
+
+  if ($gid) {
+    og_set_breadcrumb($group_type, $gid, array(l(t('Group'), "$group_type/$gid/group")));
+  }
+
+  $form['group_type'] = array('#type' => 'value', '#value' => $group_type);
+  $form['bundle'] = array('#type' => 'value', '#value' => $bundle);
+  $form['gid'] = array('#type' => 'value', '#value' => $gid);
+
+  $role_names = _og_ui_get_role_names($group_type, $bundle, $gid, $rid);
+
+  // Fetch permissions for all roles or the one selected role.
+  $role_permissions = og_role_permissions($role_names);
+
+
+  $tab_role_deleguer = array();
+
+  foreach($role_names as $rid => $name){
+    $tab_role_deleguer[$rid] = $name;
+    $tab_role_deleguer[$rid . ":deleguer"] = "(déléguer) " . $name;
+    $role_permissions[$rid . ":deleguer"] = array();
+  }
+  $role_names = $tab_role_deleguer;
+
+  // Store $role_names for use when saving the data.
+  $form['role_names'] = array(
+    '#type' => 'value',
+    '#value' => $role_names,
+  );
+
+  // Render role/permission overview:
+  $options = array();
+  // Get the list of modules and sort it by name.
+  $module_info = system_get_info('module');
+
+  // Prepare the array of OG permissions so the modules are ordered by name.
+  $modules = array();
+  foreach (module_implements('og_permission') as $module) {
+    $modules[$module] = $module_info[$module]['name'];
+  }
+  asort($modules);
+  $permissions_by_module = array_fill_keys(array_keys($modules), array());
+
+  // Get a list of all the modules implementing a hook_permission() and sort by
+  // display name.
+  foreach (og_get_permissions() as $perm => $value) {
+    $module = $value['module'];
+    $permissions_by_module[$module][$perm] = $value;
+  }
+
+  $perm_ok = array();
+  foreach (node_permissions_get_configured_types() as $type) {
+    foreach(og_list_permissions($type) as $perm_nom => $tab){
+
+      $type_name = str_replace(array('_'), " ", $type);
+      $perm_ok[$type_name][$perm_nom] = $permissions_by_module['og'][$perm_nom];
+      $perm_ok[$type_name][$perm_nom]['type'] = $type_name;
+      $perm_nom_deleg = "permission_reference_deleguer_" . $perm_nom;
+      $perm_ok[$type_name][$perm_nom_deleg] = $permissions_by_module['og'][$perm_nom_deleg];
+      $perm_ok[$type_name][$perm_nom_deleg]['type'] = $type;
+      unset($permissions_by_module['og'][$perm_nom_deleg]);
+      unset($permissions_by_module['og'][$perm_nom]);
+    }
+  }
+  $permissions_by_module += $perm_ok;
+  $t = 0;
+
+
+  foreach ($permissions_by_module as $module => $permissions) {
+    if(isset($module_info[$module])){
+      $titre = $module_info[$module]['name'];
+    }else{
+      $titre = $module;
+    }
+    $form['permission'][] = array(
+      '#markup' => '<div class="caca">' . $titre,
+      '#id' => $module,
+    );
+
+    foreach ($permissions as $perm => $perm_item) {
+      // Fill in default values for the permission.
+      $perm_item += array(
+        'description' => '',
+        'restrict access' => FALSE,
+        'warning' => !empty($perm_item['restrict access']) ? t('Warning: Give to trusted roles only; this permission has security implications in the group context.') : '',
+      );
+      // If the user can manage permissions, but does not have administer
+      // group permission, hide restricted permissions from them. This
+      // prevents users from escalating their privileges.
+      if ($gid && ($perm_item['restrict access'] && !og_user_access($group_type, $gid, 'administer group'))) {
+        continue;
+      }
+
+      $options[$perm] = '';
+      $form['permission'][$perm] = array(
+        '#type' => 'item',
+        '#markup' => $perm_item['title'],
+        '#description' => theme('user_permission_description', array('permission_item' => $perm_item)),
+      );
+      foreach ($role_names as $rid => $name) {
+        // Builds arrays for checked boxes for each role
+
+        if (is_numeric($rid) && isset($role_permissions[$rid][$perm])) {
+          $status[$rid][] = $perm;
+        }else{
+          $rid_origine = $rid;
+          $rid = explode(":", $rid, 2);
+          $rid= intval($rid[0]);
+          $t = 0;
+          if(isset($role_permissions[$rid]["permission_reference_deleguer_" . $perm])){
+            $status[$rid_origine][] = $perm;
+          }
+        }
+      }
+    }
+  }
+
+
+
+
+  // Have to build checkboxes here after checkbox arrays are built
+    foreach ($role_names as $rid => $name) {
+      foreach($options as $perm => $access){
+        if(strpos($perm, "permission_reference_deleguer") === 0){
+          unset($options[$perm]);
+          unset($form['permission'][$perm]);
+        }
+        $t = 0;
+      }
+    $t = 0;
+    $form['checkboxes'][$rid] = array(
+      '#type' => 'checkboxes',
+      '#options' => $options,
+      '#default_value' => isset($status[$rid]) ? $status[$rid] : array(),
+      '#attributes' => array('class' => array('rid-' . $rid)),
+    );
+    $t = 0;
+    $form['role_names'][$rid] = array('#markup' => check_plain($name), '#tree' => TRUE);
+
+    /*$form['checkboxes'][$rid . "_deleguer"] = array(
+      '#type' => 'checkboxes',
+      '#options' => $options,
+      '#default_value' => isset($status[$rid]) ? $status[$rid] : array(),
+      '#attributes' => array('class' => array('rid-' . $rid . "_deleguer")),
+    );
+    $form['role_names'][$rid . "_deleguer"] = array('#markup' => check_plain($name . " (déléguer)"), '#tree' => TRUE);
+  */
+  }
+
+
+  if (!$gid || !og_is_group_default_access($group_type, $gid)) {
+    $form['actions'] = array('#type' => 'actions');
+    $form['actions']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Save permissions'),
+      '#submit' => array('og_ui_admin_permissions_submit'),
+    );
+  }
+  $form['#after_build'][] = 'og_ui_admin_permissions_after_build';
+  return $form;
+}
+
+
+function permission_reference_og_ui_admin_permissions($form, $form_state, $group_type = '', $gid = 0, $bundle = '', $rid = 0){
+  //@todo ici que je devrai modifier les informations de callback de traitement de formulaire.
+  //
+  if($gid){
+    global $gentelella_var;
+    $gentelella_var['context']['nid_groupe'] = $gid;
+  }
+
+  $formulaire = permission_reference_base_og_ui_admin_permissions($form, $form_state, $group_type, $gid, $bundle, $rid);
+  if(isset($formulaire['#after_build'])){
+    if(($key = array_search('og_ui_admin_permissions_after_build', $formulaire['#after_build'])) !== false) {
+        $formulaire['#after_build'][$key] = 'permission_reference_og_ui_admin_permissions_after_build';
+    }
+  }
+  if(isset($formulaire['actions']['submit']['#submit'])){
+    $cle_rempl = array_search("og_ui_admin_permissions_submit", $formulaire['actions']['submit']['#submit']);
+    $formulaire['actions']['submit']['#submit'][$cle_rempl] = 'permission_reference_og_ui_admin_permissions_submit';
+  }
+  $formulaire['permission'][8] = array(
+      "#markup" => "test blablabla",
+      "#id" => "caca blabla",
+  );
+  //drupal_add_js(drupal_get_path('module', 'getelella_interface') . "/js/formpermglobal.js");
+  $formulaire['#attached']['js'][] = drupal_get_path('module', 'getelella_interface') . "/js/formpermglobal.js";
+  return $formulaire;
+}
+
+function permission_reference_theme() {
+  global $base_url;
+  return array(
+    'permission_reference_og_ui_admin_permissions' => array(
+      'render element' => 'form',
+      'file' => 'permission_reference.module',
+    ),
+  );
+}
+
+function theme_permission_reference_og_ui_admin_permissions($variables) {
+  return theme_og_ui_admin_permissions($variables);
+}
+
+
+function permission_reference_og_ui_admin_permissions_submit($form, &$form_state) {
+  foreach ($form_state['values']['role_names'] as $rid => $name) {
+    if(!is_numeric($rid)){
+      $rid_origine = $rid;
+      $rid = explode(":", $rid, 2);
+      $rid = $rid[0];
+      foreach($form_state['values'][$rid_origine] as $clePerm => $val){
+        $form_state['values'][$rid]['permission_reference_deleguer_' . $clePerm] = $val;
+      }
+    }
+  }
+  foreach ($form_state['values']['role_names'] as $rid => $name) {
+    if(is_numeric($rid)){
+      og_role_change_permissions($rid, $form_state['values'][$rid]);
+    }
+  }
+
+  drupal_set_message(t('Les changements ont été sauvegardés.'));
+
+  foreach ($form_state['values']['role_names'] as $rid => $name) {
+    permission_reference_transmetre_les_perms_a_tous_les_enfants($rid);
+  }
+}
+
+function sitemap_transmettre_perm_de_role_A_vers_role_B($rid, $rid_children, $les_perms = null){
+  if(!$les_perms){
+    $les_perms = og_role_permissions(array($rid => $rid));
+  }
+  $les_perms_child = og_role_permissions(array($rid_children => $rid_children));
+  foreach($les_perms_child[$rid_children] as $nom_perm => $val){
+    if(!isset($les_perms[$rid][$nom_perm])){
+      $les_perms[$rid][$nom_perm] = false;
+    }
+  }
+  og_role_change_permissions($rid_children, $les_perms[$rid]);
+}
+
+function permission_reference_transmetre_les_perms_a_tous_les_enfants($rid){
+  if($tab_child = sitemap_get_all_type_children_of_role($rid)){
+      $les_perms = og_role_permissions(array($rid => $rid));
+    }
+    foreach($tab_child as $rid_children => $name_children){
+      sitemap_transmettre_perm_de_role_A_vers_role_B($rid, $rid_children, $les_perms);
+      permission_reference_transmetre_les_perms_a_tous_les_enfants($rid_children);
+    }
+}
+
+function og_ui_forms_alter(&$form, &$form_state, $form_id){
+  $forms['og_ui_admin_global_permissions']['callback'] = 'permission_reference_og_ui_admin_permissions';
+  $forms['og_ui_admin_new_role']['callback'] = 'permission_reference_og_ui_admin_new_role';
+}
+
+function permission_reference_og_ui_admin_permissions_after_build($form){
+  $form = og_ui_admin_permissions_after_build($form);
+  $group_type = $form['group_type']['#value'];
+  $gid = $form['gid']['#value'];
+  $bundle = $form['bundle']['#value'];
+
+  $role_names = $form['role_names']['#value'];
+
+  // Indicate if all checkboxes should be disabled.
+  $disable = $gid && og_is_group_default_access($group_type, $gid);
+
+  // Authenticated roles.
+  $roles = og_roles($group_type, $bundle, $gid);
+  $anon_rid = array_search(OG_ANONYMOUS_ROLE, $roles);
+
+  $auth_rids = array_keys($roles);
+
+  foreach (og_get_permissions() as $key => $perm) {
+    foreach ($auth_rids as $auth_rid) {
+      if (in_array($auth_rid, array_keys($role_names))) {
+        if(!startsWith($key, "permission_reference_deleguer_")){
+          $nom_permission_deleguer = "permission_reference_deleguer_" . $key;
+          if(!og_user_access('node', $gid, $nom_permission_deleguer, null, false, true)){
+            $form['checkboxes'][$auth_rid][$key]['#attributes']['disabled'] = TRUE;
+          }
+        }
+
+      }
+    }
+  }
+
+  return $form;
+}
+
+/*
+ * $form['add'] = array(
+        '#type' => 'submit',
+        '#value' => t('Add role'),
+        '#validate' => array('og_ui_admin_roles_validate'),
+        '#submit' => array('og_ui_admin_roles_submit'),
+      );
+ */
+
+/*
+ * // Permission administration pages.
+  $items['group/%/%/admin/roles'] = array(
+    'title callback' => 'og_ui_menu_title_callback',
+    'title arguments' => array('Roles for group @group', 1, 2),
+    'description' => 'List, edit, or add user roles.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('og_ui_admin_new_role', 1, 2),
+    'access callback' => 'og_ui_user_access_group',
+    'access arguments' => array('manage roles', 1, 2),
+    'file' => 'og_ui.admin.inc',
+    'weight' => -9,
+  );
+ */
+
+
+//og_ui_admin_roles
+function permission_reference_og_ui_admin_roles($form, $form_state, $group_type = '', $gid = 0, $bundle = '', $rid = 0){
+  global $gentelella_var;
+  $gentelella_var['context']['nid_groupe'] = $gid;
+  $formulaire = og_ui_admin_roles($form, $form_state, $group_type, $gid, $bundle, $rid);
+  /*
+   * $element['choix'][$meat_machine] = array(
+        '#title' => t($meat),
+        '#type' => 'checkbox',
+        '#default_value' => isset($item[$meat_machine]) ? $item[$meat_machine] : '',
+      );
+   */
+  if ($rid) {
+    // Display the edit role form.
+    $role = og_role_load($rid);
+  }
+  $formulaire['heriter'] = array(
+    '#title' => t("Noeuds enfants hériter"),
+    '#type' => 'checkbox',
+    '#default_value' => $role->si_heriter,
+  );
+
+  return $formulaire;
+}
+
+function permission_reference_og_ui_admin_roles_validate($form, &$form_state){
+  og_ui_admin_roles_validate($form, $form_state);
+}
+
+
+
+/**
+     * Adding a user to an Organic group.
+     *
+     * @param int $uid.
+     *   Integer specifying the user ID.
+     * @param int $gid.
+     *   The Organic group ID.
+     * @param string $group_type.
+     *   The entity type of the group.
+     *   If group type is not given, then the default group type will be 'node'.
+     * @param string $membership_type.
+     *   Type of membership in which the user entity to be added to the group.
+     *   If the membership_type is not given, then the default membership_type
+     *   will be 'og_membership_type_default'.
+     *
+     */
+function permission_reference_add_user_to_group($uid, $gid, $group_type = NULL, $membership_type = NULL) {
+  $group = node_load($gid);
+  $user = user_load($uid);
+  if (!$group_type) {
+    $group_type = 'node';
+  }
+  if (!$membership_type) {
+    $membership_type = OG_MEMBERSHIP_TYPE_DEFAULT;
+  }
+
+  $is_a_group = og_is_group($group_type, $group);
+  // Checking whether $group is an organic group and the $user object exists.
+  if ($is_a_group && $user) {
+    $values = array(
+        'entity_type' => 'user',
+        'entity' => $user,
+        'state' => OG_STATE_ACTIVE,
+        'membership_type' => $membership_type
+
+    );
+    og_group($group_type, $gid, $values);
+  }
+  return;
+}
+
+/**
+ *
+ * @param unknown $rid l'indentifiant du role
+ * @param unknown $gid l'indentifiant du groupe
+ * @param number $transv
+ */
+function get_enfant_du_role_dans_groupe($rid, $gid, $transv = 0){
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name'));
+  $query->condition('ogr.parent_rid', $rid, '=');
+  $query->condition('ogr.de_transv', $transv, '=');
+  $query->condition('ogr.gid', $gid, '=');
+  $rids = $query->execute()->fetchAllkeyed();
+  return $rids;
+}
+
+
+/**
+ * copie un role du groupe dans dans le b ainsi que les utilisateurs et les permissions associées
+ * @param unknown $gid_parent
+ * @param unknown $gid
+ * @param unknown $rid
+ * @param number $si_transv
+ */
+function copier_role_dans_groupe($gid_parent, $gid, $role, $si_transv = 0){
+  $role_enfant = new stdClass;
+  if($si_transv){
+    $role_enfant->name = $role->name . "(transv)" . $gid_parent;
+  }else{
+    $role_enfant->name = $role->name . "(heriter)";
+  }
+  $role_enfant->gid = $gid;
+  $role_enfant->parent_rid = $role->rid;
+  $role_enfant->group_type = "node";
+  $role_enfant->group_bundle = "groupe";
+  $role_enfant->de_transv = $si_transv;
+  og_role_save($role_enfant);
+
+  sitemap_transmettre_perm_de_role_A_vers_role_B($role->rid, $role_enfant->rid);
+
+  foreach(og_extras_get_users_by_roles($gid_parent, array($role->rid)) as $cle => $uid_par){
+    permission_reference_add_user_to_group($uid_par->uid, $gid);
+    og_role_grant('node', $gid, $uid_par->uid, $role_enfant->rid);
+  }
+  return $role_enfant;
+}
+
+function permission_reference_og_ui_admin_roles_submit($form, &$form_state){
+  if ($form_state['values']['op'] == t('Delete role')) {
+    permission_reference_delete_all_child_role($form_state['values']['rid']);
+  }
+  og_ui_admin_roles_submit($form, $form_state);
+  //ici on gère aussi la supression
+
+  if(!($form_state['values']['op'] == t('Delete role'))){
+    $gid = $form['gid']['#value'];
+    $name = $form_state['values']['name'];
+    $bundle = $form['bundle']['#value'];
+
+
+    $roles = og_roles('node', $bundle, $gid);
+    if(($rid = array_search($name, $roles))
+        && $role = og_role_load($rid)
+    ){
+      $old_si_heriter = $role->si_heriter;
+      $si_heriter = $form['heriter']['#value'];
+      $role->si_heriter = $si_heriter;
+      og_role_save($role);
+      if($si_heriter && !$old_si_heriter){
+        //@heritageDesRoles
+        //faut créér un rôle pour chaques sous groupes
+        //vérifier si un rôle existe en tant qu'enfant pour chaques sous groupes
+        $query = new EntityFieldQuery();
+        $query->entityCondition('entity_type', 'node')
+          ->entityCondition('bundle', 'groupe')
+          ->fieldCondition('field_heritage_de_groupe', 'target_id', $gid, '=');
+        $result = $query->execute();
+        if(isset($result['node'])){
+          foreach($result['node'] as $gid_enfant => $val){
+            if(!get_enfant_du_role_dans_groupe($rid, $gid_enfant)){
+              $role_enfant = copier_role_dans_groupe($gid, $gid_enfant, $role);
+            }
+          }
+        }
+        //@ parcourir tous les noeuds transveraux
+
+        $groupe = node_load($gid);
+        $wrapper = entity_metadata_wrapper('node', $groupe);
+        foreach($wrapper->groupe_parents_tranversaux as $delta => $item)  {
+          $gid_enfant = $item->nid->value();
+          if(!get_enfant_du_role_dans_groupe($rid, $gid_enfant, 1)){
+            $role_enfant = copier_role_dans_groupe($gid, $gid_enfant, $role, 1);
+        }
+      }
+
+
+      }else if($old_si_heriter && !$si_heriter){
+        permission_reference_delete_all_child_role($role->rid);
+      }
+    }
+  }
+}
+
+function permission_reference_og_role_delete($role){
+  foreach(sitemap_get_children_of_role($role->rid) as $rid_enfant => $rid_nom){
+    og_role_delete($rid_enfant);
+  }
+  foreach(sitemap_get_sub_transv_of_role($role->rid) as $rid_enfant => $rid_nom){
+    og_role_delete($rid_enfant);
+  }
+
+}
+
+/**
+ * supprime tous les sous-rôles d'un rôle donné en paramètre
+ * @param entier $rid l'identifiant du rôle a supprimer.
+ */
+function permission_reference_delete_all_child_role($rid){
+  foreach(sitemap_get_children_of_role($rid) as $rid_enfant => $rid_nom){
+    og_role_delete($rid_enfant);
+  }
+  foreach(sitemap_get_sub_transv_of_role($rid) as $rid_enfant => $rid_nom){
+    og_role_delete($rid_enfant);
+  }
+}
+
+/*
+ * $name = 'og_group_manager_default_rids_' . $entity_type . '_' . $bundle;
+    if ($rids = variable_get($name)) {
+      foreach ($rids as $rid) {
+        og_role_grant($entity_type, $id, $entity->uid, $rid);
+      }
+    }
+    http://www.drupalcontrib.org/api/drupal/contributions%21og%21og.module/function/og_entity_insert/7
+ */
+
+
+

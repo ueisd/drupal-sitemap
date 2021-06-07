@@ -1,0 +1,229 @@
+<?php
+
+function transversal_hierarchy_og_permission(){
+  $perm = array();
+  $perm['integrer le groupe dans une transversalisation'] = array(
+    'title' => "Intégrer le groupe dans une transversalisation",
+    'description' => "Permet de créer un lien de parenté transversal la hiérarchie",
+    'roles' => array(OG_ANONYMOUS_ROLE, OG_AUTHENTICATED_ROLE),
+    'default role' => array(
+      OG_ANONYMOUS_ROLE,
+      OG_AUTHENTICATED_ROLE,
+      OG_ADMINISTRATOR_ROLE,
+    ),
+    'module' => "transversal_hierarchy",
+  );
+  $perm['Rendre le groupe transversal'] = array(
+    'title' => "Rend le goupe transversal",
+    'description' => "Permet de créer un lien de parenté transversal la hiérarchie",
+    'roles' => array(OG_ANONYMOUS_ROLE, OG_AUTHENTICATED_ROLE),
+    'default role' => array(
+      OG_ANONYMOUS_ROLE,
+      OG_AUTHENTICATED_ROLE,
+      OG_ADMINISTRATOR_ROLE,
+    ),
+    'module' => "transversal_hierarchy",
+  );
+  return $perm;
+}
+
+function transversal_hierarchy_menu() {
+	$items = array();
+	$items['transversal_hierarchy/%'] = array(
+    'title' => 'Form Tutorial',
+    'page callback' => 'transversal_hierarchy_modify_page',
+    'page arguments' => array('form_example_tutorial_1', 1),
+    'access callback' => 'sitemap_access',
+    'access arguments' => array('Rendre le groupe transversal', "node", 1),
+	  'theme callback' => 'getelella_interface_gentelella_callback',
+    'description' => 'A set of ten tutorials',
+	  'expanded' => TRUE,
+    'file' => 'transversal_hierarchy_form.inc',
+    'type' => MENU_NORMAL_ITEM,
+
+  );
+	$items['photos/get/photos'] = array(
+    'page callback' => 'mymodule_get_photos_ajax',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('access content'),
+  );
+
+
+	return $items;
+}
+
+function transversal_hierarchy_modify_page($form_id, $nid){
+  if($nid){
+    global $gentelella_var;
+    $gentelella_var['context']['nid_groupe'] = $nid;
+  }
+  $form = drupal_get_form('form_example_tutorial_1', $nid);
+  return drupal_render($form);
+}
+
+class Arbre{
+  private $arbre;
+  private $noeudsRacines = array();
+  private $nid;
+  function __construct($liste_noeuds, $nid) {
+    $this->nid = $nid;
+    while(!empty($liste_noeuds)){
+      $noeud = array_pop($liste_noeuds);
+      $racine = $noeud;
+      $parcourus = array();
+      while(
+          ($node = $this->get_parent($racine))
+          && isset($node->nid)
+          && !array_key_exists($node->nid, $parcourus)
+      ){
+        $parcourus[] = $node->nid;
+        $racine = $node;
+      }
+      if(!isset($this->noeudsRacines[$racine->nid])){
+        $this->noeudsRacines[$racine->nid] = $racine;
+      }
+    }
+  }
+  public function getJsonTree(){
+    $t = 0;
+    $json_node = array('id' => 0, 'name' => 'racine', 'title' => 'racine', 'className' => 'node-tree-disable');
+    $jsonChild = array();
+    foreach($this->noeudsRacines as $nid => $node){
+      $jsonChild[] = $this->getJsonData($node);
+      $r = 9;
+    }
+    if(count($jsonChild) == 1){
+      $json_node['children'] = $jsonChild[0];
+    }else if(count($jsonChild) > 1){
+      $json_node['children'] = $jsonChild;
+    }
+    return $json_node;
+  }
+  private function getJsonData($node){
+    $json_node = array('id' => $node->nid, 'name' => $node->title, 'title' => $node->title + $node->nid);
+    $enfants = $this->get_childrens($node);
+    $json_enfants = array();
+    //si noeud pas accès donne pan acces on met classe non modif
+    if($node->nid == $this->nid){
+      $json_node['className'] = 'node-tree-current';
+    }else if (!og_user_access("node", $node->nid, "integrer le groupe dans une transversalisation")){
+      $json_node['className'] = 'node-tree-disable';
+    }
+    if($node->nid == $this->nid){
+      //$json_node['className'][] = 'node-tree-current';
+    }
+    foreach($enfants as $nid => $node_enfant){
+      $json_enfants[] = $this->getJsonData($node_enfant);
+    }
+    if(count($json_enfants) > 0){
+      $json_node['children'] = $json_enfants;
+    }
+    return $json_node;
+  }
+  public function get_arbre(){
+    return $this->arbre;
+  }
+  private function get_parent($node){
+    $w_noeud = entity_metadata_wrapper('node', $node);
+    RETURN (isset($w_noeud->field_heritage_de_groupe)) ?
+    $w_noeud->field_heritage_de_groupe->value() : null;
+  }
+
+  private function get_childrens($node){
+    $ret = array();
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'groupe')
+    ->fieldCondition('field_heritage_de_groupe', 'target_id', $node->nid, '=');
+    $results = $query->execute();
+    if(isset($results['node'])){
+      foreach($results['node'] as $nid => $val){
+        if($enfant = node_load($nid)){
+          $ret[$nid] = $enfant;
+        }
+      }
+    }
+    return $ret;
+  }
+}
+
+function transversal_hierarchy_get_all_group(){
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+  ->entityCondition('bundle', 'groupe');
+  $result = $query->execute();
+  $tous_les_noeuds = array();
+
+
+  if(isset($result['node'])){
+    foreach ($result['node'] as $nid => $val){
+      if($noeud = node_load($nid)){
+        $tous_les_noeuds[$nid] = $noeud;
+      }
+    }
+  }
+  return $tous_les_noeuds;
+}
+
+function mymodule_get_photos_ajax($nid) {
+  $tous_les_noeuds = transversal_hierarchy_get_all_group();
+  $arbre = new Arbre($tous_les_noeuds, $nid);
+  $r = $arbre->get_arbre();
+  $json_tree = $arbre->getJsonTree();
+  $t = 9;
+  //->fieldCondition('field_photo', 'fid', 'NULL', '!=');
+  $essai = array(
+    'name' => $nid . 'racine vide' . $nid,
+    'title' => 'racine vide',
+    'children' => array(
+        array('name' => 'Bo Miao', 'title' => 'department manager', 'className' => 'essai1',
+            'children' => array(
+                array('name' => 'Li Jing', 'title' => 'senior engineer', 'className' => 'product-dept'),
+                array('name' => 'Li Xin', 'title' => 'senior engineer', 'className' => 'product-dept',
+                    'children' => array(
+                        array('name' => 'To To', 'title' => 'engineer', 'className' => 'pipeline1'),
+                        array('name' => 'Fei Fei', 'title' => 'engineer', 'className' => 'pipeline1'),
+                        array('name' => 'Xuan Xuan', 'title' => 'engineer', 'className' => 'pipeline1'),
+                    ),
+                ),
+            )
+        ),
+        array('name' => 'Su Miao', 'title' => 'department manager', 'className' => 'middle-level',
+          'children' => array(
+            array('name' => 'Pang Pang', 'title' => 'senior engineer', 'className' => 'rd-dept'),
+            array('name' => 'Hei Hei', 'title' => 'senior engineer', 'className' => 'rd-dept',
+                'children' => array(
+                    array('name' => 'Xiang Xiang', 'title' => 'UE engineer', 'className' => 'frontend1'),
+                    array('name' => 'Dan Dan', 'title' => 'engineer', 'className' => 'frontend1'),
+                    array('name' => 'Zai Zai', 'title' => 'engineer', 'className' => 'frontend1'),
+                ),
+            ),
+          ),
+        ),
+    )
+  );
+  drupal_json_output($json_tree);
+}
+/**
+ * Implements hook_library().
+ */
+function transversal_hierarchy_library() {
+  $libraries['jorgchart_mit'] = array(
+    'title' => 'jQuery mit',
+    'website' => 'https://github.com/dabeng/OrgChart',
+    'version' => '1.5.0',
+    'css' => array(
+      drupal_get_path('module', 'transversal_hierarchy') . '/dist/css/jquery.orgchart.css' => array(),
+      drupal_get_path('module', 'transversal_hierarchy') . '/dist/css/styleCentre.css' => array(),
+      drupal_get_path('module', 'transversal_hierarchy') . '/dist/css/styleColor.css' => array(),
+    ),
+    'js' => array(
+      drupal_get_path('module', 'transversal_hierarchy') . '/dist/js/jquery.orgchart.js' => array(),
+    ),
+  );
+  return $libraries;
+}
+
+/*
+ * drupal_add_library('transversal_hierarchy', 'jorgchart_mit');
+ */

@@ -1,0 +1,2742 @@
+<?php
+define('PREFIXE_NOM_MAILBOX', "importeur_de_email_");
+define('PREFIXE_NOM_FEED_CALENDRIER', "importeur_ical_");
+
+function sitemap_access($perm, $entity_type, $entity){
+  if(($node = node_load($entity))
+      && og_is_group($entity_type, $node)
+  ){
+    $og_access = og_user_access("node", $node->nid, $perm);
+    return $og_access;
+  }
+  return false;
+}
+
+function get_first_child_groups_with_controler($node){
+  //on parcoure les enfants tant
+  //pour chaques enfants ayant pas un controleur, on decend.
+  //on concatène les résultats
+  //$w_controleur = entity_metadata_wrapper('node', $controleur);
+  $query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'article')
+      ->fieldCondition('field_heritage_de_groupe', 'value', $enfants->nid, '=');
+  $result = $query->execute();
+}
+
+/**
+ * sert à initialiser l'ajout d'infos sur le fait qu'un noeud provient d'un form submit
+ * @param noeud $node
+ * @param objet info form $form
+ * @param objet form state $form_state
+ */
+function sitemap_node_validate($node, $form, &$form_state) {
+  //informer d'un form submit
+  global $sitemap_processus;
+  $sitemap_processus['sitemap_node_update']['status'][$form['#build_id']] = false;
+  $sitemap_processus['sitemap_node_insert']['status'][$form['#build_id']] = false;
+  if(isset($node->nid)){
+    $sitemap_processus['sitemap_node_update']['status'][$form['#build_id']] = true;
+  }else {
+    $sitemap_processus['sitemap_node_insert']['status'][$form['#build_id']] = true;
+  }
+}
+
+
+/**
+ * créé un terme avec un nom et un parent(optionnel)
+ * @param chaine $nom le nom du terme à créer
+ * @param entier $tid_parent l'identifiant du terme parent
+ * @return void|stdClass retourne le terme si créé sinon retourne void
+ */
+function sitemap_create_term($nom, $tid_parent = null) {
+  if($nom == null){
+    return;
+  }
+  $vocab = taxonomy_vocabulary_machine_name_load('sitemap');
+  $newterm = new stdClass();
+  $newterm->name = $nom; // The name of the term
+  $newterm->vid = $vocab->vid; // The ID of the parent vocabulary
+  if($tid_parent != null){
+    $newterm->parent = $tid_parent;
+  }
+  taxonomy_term_save($newterm);
+  return $newterm;
+}
+
+
+/**
+ * obtient le noeud parent d'un noeud dans sitempa ou retourne faux
+ * @param noeud $node à partir duquel on obtient la valeur
+ * @return A|boolean ou l'objet du noeud parent
+ */
+function sitemap_get_noeud_parent($node) {
+  if(isset($node->field_noeud_parent_sitemap['und'][0]['target_id'])
+      && ($noeud_parent = node_load($node->field_noeud_parent_sitemap['und'][0]['target_id']))
+  ) {
+    return $noeud_parent;
+  }
+  return false;
+}
+
+
+/**
+ * obtient le terme parent d'un noeud si il existe ou retourne faux
+ * @param noeud $node à partir duque on obtient la valeur
+ * @return A|boolean ou l'objet du terme parent
+ */
+function sitemap_get_terme_associe($node) {
+  $vocabulaire = taxonomy_vocabulary_machine_name_load("sitemap");
+  if(isset($node->field_terme_parent_sitemap['und'][0]['tid'])
+      && ($terme_parent = taxonomy_term_load($node->field_terme_parent_sitemap['und'][0]['tid']))
+      && $terme_parent->vid == $vocabulaire->vid
+      ) {
+    return $terme_parent;
+  }else {
+    return false;
+  }
+}
+
+
+/**
+ * obtient le noeud asscié au terme qui doit être dans sitemap
+ * @param identifiant de terme $tid à partir duquel on obtient le parent
+ * @param identifaient de noeud $nid_exclus du noeud exclus des résultats
+ * @return A|boolean ou le noeud obtenu
+ */
+function sitemap_get_noeud_selon_tid($tid, $nid_exclus = null) {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+  ->fieldCondition('field_terme_parent_sitemap', 'tid', $tid);
+
+  if($nid_exclus){
+    $query->propertyCondition('nid', $nid_exclus, '<>');
+  }
+
+  if(($result = $query->execute())
+      && ($nids = array_keys($result['node']))
+      && ($noeud = node_load($nids[0]))
+      ){
+    return $noeud;
+  }else{
+    return false;
+  }
+}
+
+
+/**
+ * obtient le terme parent du terme dans le sitemap ou 0 si racine ou pas de terme
+ * @param identifiant de terme $tid
+ * @return An|number as term id
+ */
+function sitemap_get_terme_parent_de_terme($tid) {
+  if($liste_parents = taxonomy_get_parents($tid)){
+    foreach($liste_parents as $tid => $terme) {
+      $retour = $tid;
+    }
+    return $retour;
+  }
+  else{
+    return 0;
+  }
+}
+
+
+/**
+ * global
+ * à chaque ajout d'un noeud
+ * une partie de la fonction sert à la gestion sitemap, c'est l'initialisateur du processus
+ */
+function sitemap_node_insert($node) {
+  global $sitemap_processus;
+
+  // partie traitemen une seule fois après un form submit
+  if( isset($node->form_build_id)
+      && isset($sitemap_processus['sitemap_node_insert']['status'][$node->form_build_id])
+      && $sitemap_processus['sitemap_node_insert']['status'][$node->form_build_id]
+      ) {
+    $sitemap_processus['sitemap_node_insert']['status'][$node->form_build_id] = false;
+
+    drupal_register_shutdown_function('_creer_sitemap', $node->nid);
+  }else {
+    drupal_register_shutdown_function('_sitemap_rend_enfant_evenement', $node->nid);
+  }
+
+  /*
+   * si le noeud est de type email... et que le champ noeud parent sitemap a une valeur on le rend enfant de cette valeur
+   */
+}
+
+function _sitemap_rend_enfant_evenement($nid){
+  if(($node = node_load($nid))
+    && ($emw_node = entity_metadata_wrapper('node', $node))
+    && isset($emw_node->field_rendre_enfant_de_sitemap)
+    && ($noeud_parent = $emw_node->field_rendre_enfant_de_sitemap->value())
+  ){
+    sitemap_rendre_noeud_enfant_de_noeud($node, $noeud_parent);
+    $emw_node->field_rendre_enfant_de_sitemap = null;
+    $emw_node->save();
+  }else{
+    sitemap_ajouter_un_noeud_sitemap($node);
+    node_save($node);
+    sitemap_actualiser_groupe_controleur($node);
+    sitemap_actualiser_hierarchie_groupes_controleurs($node);
+  }
+}
+
+function sitemap_get_maillons_du_noeud($node) {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'maillon_contenu')
+    ->propertyCondition('status', 1) // published? yes
+    ->fieldCondition('field_contenu_refere', 'target_id', $node->nid);
+
+  $result = $query->execute();
+  if (isset($result['node'])) {
+    $items_nids = array_keys($result['node']);
+    $items = entity_load('node', $items_nids);
+    return $items;
+  }else{
+    return false;
+  }
+}
+
+function sitemap_node_delete($node) {
+  global $sitemap_processus;
+  if(isset($sitemap_processus['sitemap_node_delete'])) {
+    $sitemap_processus['sitemap_node_delete']++;
+  }else{
+    $sitemap_processus['sitemap_node_delete'] = 1;
+  }
+
+
+  if($sitemap_processus['sitemap_node_delete'] <= 1){
+    drupal_register_shutdown_function('_supprimer_sitemap', $node);
+  }
+  if($node->type == "groupe"){
+    //touver les roles et appliquer supprimer tous les rôles
+    $role_heriteur = og_roles_heriteur('node', $node->type, $node->nid, 1);
+    foreach($role_heriteur as $rid => $nom){
+      permission_reference_delete_all_child_role($rid);
+    }
+  }
+}
+
+//supprime récursivement à partir de conteneur
+function sitemap_supprimer_reccursivement($node, $delete_node = true) {
+
+  foreach(sitemap_get_noeuds_enfants($node) as $key => $enfant) {
+    sitemap_supprimer_reccursivement($enfant);
+  }
+  if($delete_node) {
+    taxonomy_term_delete(sitemap_get_terme_associe($node)->tid);
+    node_delete($node->nid);
+  }
+}
+
+function sitemap_modifie_parent_de_a_pour_b(&$node, $noeud_parent) {
+ if(($terme_associe = sitemap_get_terme_associe($node))
+     && isset($noeud_parent->field_terme_parent_sitemap['und'][0]['tid'])
+     && isset($node->field_noeud_parent_sitemap['und'][0]['target_id'])) {
+    $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $noeud_parent->nid;
+    $terme_associe->parent = $noeud_parent->field_terme_parent_sitemap['und'][0]['tid'];
+    taxonomy_term_save($terme_associe);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * retourne le groupe controleur direct du noeud si il en a sinon retourne faux
+ * @param unknown $node le noeud
+ * @return A|boolean
+ */
+function sitemap_get_groupe_controlant(&$node){
+  $w_node = entity_metadata_wrapper('node', $node);
+  $groupe_controlant_entite = (isset($w_node->field_groupe_controlant)) ?
+    $w_node->field_groupe_controlant->value() : null;
+  if($groupe_controlant_entite){
+      return node_load($groupe_controlant_entite->nid);
+  }else{
+    return false;
+  }
+}
+
+function _supprimer_sitemap($node) {
+  sitemap_supprimer_galerie($node, "field_galerie_d_articles");
+  sitemap_supprimer_galerie($node, "field_galerie_de_videos");
+  sitemap_supprimer_galerie($node, "field_galerie_de_photo");
+
+    //supprime les maillons référents si il y a lieu
+  foreach(sitemap_get_maillons_du_noeud($node) as $maillon) {
+    sitemap_supprimer_reccursivement($maillon);
+  }
+
+  $supprimer_rec = variable_get('conteneur_supprimer_' . $node->type, FALSE);
+  foreach(sitemap_get_instances_of_container($node) as $cle => $instance) {
+    $field_name = $instance['field_name'];
+    if(isset($node->{$field_name}['und'][0]['target_id'])) {
+      $conteneur = node_load($node->{$field_name}['und'][0]['target_id']);
+      sitemap_supprimer_reccursivement($conteneur);
+    }
+  }
+
+
+  if($supprimer_rec) {
+    sitemap_supprimer_reccursivement($node, false);
+  }
+
+
+
+  //déplacer enfants vers parents
+  if($noeud_parent = sitemap_get_noeud_parent($node)) {
+    //obtenir le controleur parent
+    $goupe_controlant_parent = sitemap_get_first_group_controleur($node);
+    //obtenir le groupe parent au groupe
+    $groupe_controlant = sitemap_get_groupe_controlant($node);
+
+
+    //supprimer le groupe contôlant
+    if($groupe_controlant){
+      sitemap_enleve_enfant_pour_groupe_rec($node, $groupe_controlant);
+      //@todo enlever les sous roles en parcourant les rôle du groupe avant
+      //permission_reference_transmetre_les_perms_a_tous_les_enfants($rid);
+      foreach(og_roles_heriteur("node", $groupe_controlant->type, $groupe_controlant->nid, 1) as $rid => $name){
+        permission_reference_delete_all_child_role($rid);
+      }
+      node_delete($groupe_controlant->nid);
+    }
+
+
+    foreach(sitemap_get_noeuds_enfants($node) as $enfant) {
+      if(variable_get('est_page_' . $enfant->type, FALSE)) {
+        //diffuser le contoleur parent et sauvegarder le noeud
+        if($goupe_controlant_parent){
+          sitemap_ajoute_enfant_pour_groupe_rec($enfant, $goupe_controlant_parent);
+        }
+        $old_enfant = $enfant;
+        if(sitemap_modifie_parent_de_a_pour_b($enfant, $noeud_parent)) {
+          node_save($enfant);
+          sitemap_actualiser_statut_archivage($enfant);
+          rules_invoke_event_by_args('sitemap_test_event', array('node' => $enfant, 'old_node' => $old_enfant));
+        }
+      }else {
+        sitemap_supprimer_reccursivement($enfant);
+      }
+    }
+    sitemap_actualiser_hierarchie_groupes_controleurs($noeud_parent, null, true);
+  }
+
+  sitemap_supprimer_feed_boite_de_courriel($node);
+  sitemap_supprimer_feed_ical($node);
+
+
+  /*faut parcourir tous les conteneurs */
+  rules_invoke_event_by_args('sitemap_delete', array('node' => $node));
+}
+
+function sitemap_supprimer_feed_ical($node){
+  $emw_node = entity_metadata_wrapper('node', $node);
+  if( $node->type == "calendrier_feed"
+      && isset($emw_node->field_feed)
+      && ($feed_id = $emw_node->field_feed->value())
+  ){
+    $feed = feeds_importer($feed_id);
+    $feed->delete();
+  }
+}
+
+/**
+ * sert à ajouter un noeud en tant que sitemap mais ne le sauvegarde pas
+ * s'occupe du l'Archivage automatique et aussi de la reconstruction des menus
+ *  @param $node
+ *    le noeud où on ajoute le sitemap
+ *
+ */
+function sitemap_ajouter_un_noeud_sitemap(&$node) {
+    $tid_racine = 316;
+    $instances = field_info_instances('node', $node->type);
+    if( isset($instances['field_noeud_parent_sitemap']) && isset($instances['field_terme_parent_sitemap']) ) {
+      $noeud_parent = sitemap_get_noeud_parent($node);
+      $terme_associe = sitemap_get_terme_associe($node);
+      if($noeud_parent
+          && ($terme_noeud_parent = sitemap_get_terme_associe($noeud_parent))
+          ) {
+        //on ajoute selon noeud
+        $node->field_terme_parent_sitemap['und'][0]['tid'] = sitemap_create_term($node->title, $terme_noeud_parent->tid)->tid;
+      }elseif($terme_associe){
+        $node->field_terme_parent_sitemap['und'][0]['tid'] = sitemap_create_term($node->title, $terme_associe->tid)->tid;
+        if($noeud_parent = sitemap_get_noeud_selon_tid($terme_associe->tid, $node->nid)) {
+          $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $noeud_parent->nid;
+        }
+      }elseif(variable_get('est_page_' . $node->type, FALSE)) {
+        $node->field_terme_parent_sitemap['und'][0]['tid'] = sitemap_create_term($node->title, $tid_racine)->tid;
+      }else {
+        $node->field_terme_parent_sitemap['und'][0]['tid'] = sitemap_create_term($node->title)->tid;
+      }
+    }
+    sitemap_actualiser_statut_archivage($node);
+    sitemap_reconstruire_menu($node);
+    return $node;
+}
+
+/**
+ * actualise le sitemap et sauvegarde le noeud
+ *  @param $node
+ *    la référence du noeud sur lequel on actualise le sitemap
+ *  @param $old_node
+ *    l'ancien noeud avant le form submit
+ *  @param $opp_comple
+ *    sert à indiquer si on effectie l'archivage auto et la reconstruction auto
+ */
+function sitemap_actualiser_sitemap(&$node, $old_node, $opp_comple = true, &$noeud_delpace_parent){
+  // préload
+  $noeud_parent = sitemap_get_noeud_parent($node);
+  $terme_associe = sitemap_get_terme_associe($node);
+  if($old_node) {
+    //mis en bloc de code plutôt qu'en conditions permet les entrées dans hierarchie
+    $old_noeud_parent = sitemap_get_noeud_parent($old_node);
+    $old_terme_associe = sitemap_get_terme_associe($old_node);
+  }else{
+    ///cas problème
+    return;
+  }
+  $noeud_cible = sitemap_get_noeud_selon_tid($terme_associe->tid, $node->nid);
+
+   //gestion des entrées
+  if(!$old_terme_associe && !$old_noeud_parent){
+    if($noeud_parent
+        && ($terme_noeud_parent = sitemap_get_terme_associe($noeud_parent))
+    ) {
+      //on ajoute selon noeud
+      $node->field_terme_parent_sitemap['und'][0]['tid'] = sitemap_create_term($node->title . "-(" . $node->type . ")", $terme_noeud_parent->tid)->tid;
+      $e = 1;
+    }elseif($terme_associe){
+      $node->field_terme_parent_sitemap['und'][0]['tid'] = sitemap_create_term($node->title . "-(" . $node->type . ")", $terme_associe->tid)->tid;
+      if($noeud_parent = sitemap_get_noeud_selon_tid($terme_associe->tid, $node->nid)) {
+        $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $noeud_parent->nid;
+      }
+    }
+  }elseif(($old_noeud_parent && !$noeud_parent)
+      || ($old_terme_associe && !$terme_associe)
+      ){ //interdiction des sorties
+    ($old_terme_associe) ? $node->field_terme_parent_sitemap['und'][0]['tid'] = $old_terme_associe->tid : null;
+    ($old_noeud_parent) ? $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $old_noeud_parent->nid : null;
+    drupal_set_message(t('attention interdiction de sortir du sitemap'));
+    //fin interdiction des sorties
+  }elseif( $old_terme_associe && $terme_associe ) { //commencer la partie de modification sitemap
+    if($old_terme_associe->tid != $terme_associe->tid) {
+      $old_termes_enfants = taxonomy_get_children($old_terme_associe->tid);
+
+      //intégrité de non circularité relationnelle
+      foreach(taxonomy_get_parents_all($terme_associe->tid) as $cle => $val) {
+        $termes_parents_profondeur[] = $val->tid;
+      }
+
+       $old_terme_parent_du_terme = sitemap_get_terme_parent_de_terme($old_terme_associe->tid);
+      foreach($old_termes_enfants as $cle => $terme_enfant) {
+        if(in_array($terme_enfant->tid, $termes_parents_profondeur)) {
+          $terme_enfant->parent = $old_terme_parent_du_terme;
+          taxonomy_term_save($terme_enfant);
+          //oublié de mettre à jour le noeud parent
+          $noeud_enfant = sitemap_get_noeud_selon_tid($terme_enfant->tid, $node->nid);
+          //noeud deplace et groupe controleur (un seul groupe deplace existe... alors tab une entrée)
+          if(is_array($noeud_delpace_parent) && $noeud_enfant){
+            $noeud_delpace_parent['nid'] = $noeud_enfant->nid;
+            if($groupe_controleur = sitemap_get_first_group_controleur($noeud_enfant)){
+              $noeud_delpace_parent['controleur'] = $groupe_controleur;
+            }
+          }
+          $noeud_enfant->field_noeud_parent_sitemap['und'][0]['target_id'] = $old_noeud_parent->nid;
+          node_save($noeud_enfant);
+        }
+        $test6 = 6;
+      }
+      // fin intégrité non circularité relationnelle
+
+      $terme_associe = taxonomy_term_load($terme_associe->tid); //rafraichir terme associé
+      $old_terme_associe = taxonomy_term_load($old_terme_associe->tid); //rafraichir l'ancien terme associé
+      if($noeud_cible) {
+        $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $noeud_cible->nid;
+      }else {
+        $node->field_noeud_parent_sitemap['und'][0]['target_id'] = null;//vérifier si nécéssaire de faire ça
+      }
+      $old_terme_associe->parent = $terme_associe->tid;
+      taxonomy_term_save($old_terme_associe);
+      $node->field_terme_parent_sitemap['und'][0]['tid'] = $old_terme_associe->tid;
+    }elseif( $old_noeud_parent->nid != $noeud_parent->nid) {
+        //seulement changement noeud parent... pas sensé être déclenché.
+    }
+
+      //temporaire afin de changer le data
+      /*($old_terme_associe) ? $node->field_terme_parent_sitemap['und'][0]['tid'] = $old_terme_associe->tid : null;
+      ($old_noeud_parent) ? $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $old_noeud_parent->nid : null;*/
+  }
+  if($opp_comple) {
+    sitemap_actualiser_statut_archivage($node);
+    sitemap_reconstruire_menu($node);
+  }
+  node_save($node);
+}
+
+
+
+/**
+ * Obtien tout les champs qui servent à la création automatique de conteneurs
+ * @param noeud $node le noeud à partir duquel on cherche les valeurs
+ * @return liste des champs
+ */
+function sitemap_get_instances_of_container(&$node) {
+  $instances = field_info_instances('node', $node->type);
+  $champs_conteneur_ref = array();
+  foreach($instances as $cle => $champ) {
+    $field_info = field_info_field($champ['field_name']);
+    if($field_info['type'] == "entityreference") {
+      if( isset($field_info['settings']['handler_settings']['behaviors']['est_conteneur']['auto_adding'])
+        && $field_info['settings']['handler_settings']['behaviors']['est_conteneur']['auto_adding'] == 1
+      ) {
+        $champs_conteneur_ref[] = $champ;
+        watchdog('sitemap', 'Le test fonctionne. entity reference avec la clé');
+        drupal_set_message(t('Le test fonctionne. entity reference avec la clé'));
+      }
+    }
+  }
+  return $champs_conteneur_ref;
+}
+
+/**
+ *  Rend enfant un noeud dans sitemap en changeant noeud parent
+ *  sitemap et en ajoutant un terme à terme parent sitemap. N'enregitre pas le noeud.
+ * @param reference $enfant au noeud à mettre enfant
+ * @param reference $parent au noeud envers lequel enfant sera enfant
+ */
+function sitemap_rendre_noeud_enfant_de_noeud(&$enfant, &$parent) {
+  $enfant->field_noeud_parent_sitemap[$enfant->language][0]['target_id'] = $parent->nid;
+  if(($terme_parent = sitemap_get_terme_associe($parent))
+    && ($terme_associe = sitemap_create_term($enfant->type . "_" . $parent->title, $terme_parent->tid))) {
+    $enfant->field_terme_parent_sitemap[$enfant->language][0]['tid'] = $terme_associe->tid;
+  }
+  sitemap_actualiser_statut_archivage($enfant);
+  sitemap_reconstruire_menu($enfant);
+}
+
+function sitemap_node_access($operation, $nid){
+  $node = node_load($nid);
+  return node_access($operation, $node);
+}
+
+/**
+ * ajoute les conteneurs aux noeuds sans sauvegarder
+ * @param noeud $node
+ *   le noeud sur lequel effectuer le changement
+ * @return number
+ *   le nombre de champs auxquels on a ajouté un conteneur
+ */
+function sitemap_ajouter_conteneurs(&$node) {
+  $nbrAjouts = 0;
+  foreach(sitemap_get_instances_of_container($node) as $cle => $instance) {
+    $field_name = $instance['field_name'];
+    if(!isset($node->{$field_name})
+        || !isset($node->{$field_name}['und'])
+        || !isset($node->{$field_name}['und'][0])
+        || !isset($node->{$field_name}['und'][0]['target_id'])
+     ) {
+
+      $container = new stdClass();  // Create a new node object
+      $container->type = 'conteneur';  // Content type
+      $container->language = LANGUAGE_NONE;  // Or e.g. 'en' if locale is enabled
+      node_object_prepare($container);  //Set some default values
+      $container->title = '(' . $node->title . ')-' . $instance['field_name'];
+
+      $container->status = 1;   // (1 or 0): published or unpublished
+      $container->promote = 0;  // (1 or 0): promoted to front page or not
+      $container->sticky = 0;  // (1 or 0): sticky at top of lists or not
+      $container->comment = 1;  // 2 = comments open, 1 = comments closed, 0 = comments hidden
+      // Add author of the node
+      $container->uid = 1;
+
+      $container->field_racine_des_conteneurs[$container->language][0]['target_id'] = $node->nid;
+
+      sitemap_rendre_noeud_enfant_de_noeud($container, $node);
+      /*$container->field_noeud_parent_sitemap[$container->language][0]['target_id'] = $node->nid;
+      if(($terme_parent = sitemap_get_terme_associe($node))
+          && ($terme_associe = sitemap_create_term($node->title, $terme_parent->tid))) {
+        $container->field_terme_parent_sitemap[$container->language][0]['tid'] = $terme_associe->tid;
+      }*/
+
+
+      // Set created date
+      /*$node->date = date();
+      $node->created = date('YmdHis');*/
+
+      $path = 'content/mytest-' . date('YmdHis');
+      $container->path = array('alias' => $path);
+      // Save the node
+      node_save($container);
+      $node->{$field_name}['und'][0]['target_id'] = $container->nid;
+      $nbrAjouts++;
+    }
+  }
+  return $nbrAjouts;
+}
+
+/**
+ * cée un maillon si le champ field_maillage a une valeur et réinitialise cette valeur
+ * sauvegarde la noeud
+ * @param référence de noeud $node le noeud sur lequel effectuer l opération
+ */
+function creer_maillon(&$node){
+  if($field_maillage = field_get_items("node", $node, "field_maillage")) {
+    node_save($node);
+    $maillage = $field_maillage[0]['target_id'];
+    $node->field_maillage['und'] = null;
+    $noeud_parent_maillon = node_load($maillage);
+
+    $maillon = new stdClass();  // Create a new node object
+    $maillon->type = 'maillon_contenu';  // Content type
+    $maillon->language = LANGUAGE_NONE;  // Or e.g. 'en' if locale is enabled
+    node_object_prepare($maillon);  //Set some default values
+    $maillon->title = '(' . $node->title . ')-' . "galerietest";
+    $maillon->field_contenu_refere['und'][0]['target_id'] = $node->nid;
+
+    $maillon->status = 1;   // (1 or 0): published or unpublished
+    $maillon->promote = 0;  // (1 or 0): promoted to front page or not
+    $maillon->sticky = 0;  // (1 or 0): sticky at top of lists or not
+    $maillon->comment = 1;  // 2 = comments open, 1 = comments closed, 0 = comments hidden
+    // Add author of the node
+    $maillon->uid = 1;
+
+    sitemap_rendre_noeud_enfant_de_noeud($maillon, $noeud_parent_maillon);
+    $path = 'content/mytest-' . date('YmdHis');
+    $maillon->path = array('alias' => $path);
+    // Save the node
+    sitemap_actualiser_statut_archivage($maillon);
+    node_save($maillon);
+    if($node->type != 'contact'){
+      $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $maillon->nid;
+    }
+    //créér un maillon, le mettre enfant de maillage.
+    //mettre le noeud enfant de maillon
+  }
+}
+
+
+function sitemap_gerer_galerie(&$node, $type, $champ_booleen, $champ_galerie) {
+if(($bool_field = field_get_items('node', $node, $champ_booleen))
+      && ($bool_field[0]['value'] == 1)
+      && sitemap_get_champ_si_existe($node, $champ_galerie)
+      && !field_get_items('node', $node, $champ_galerie)) {
+      $e = 0;
+      //ajouter une galerie d'article comme enfant
+      //populer le field
+      node_save($node);
+
+      $galerie = new stdClass();  // Create a new node object
+      $galerie->type = $type;  // Content type
+      $galerie->language = LANGUAGE_NONE;  // Or e.g. 'en' if locale is enabled
+      node_object_prepare($galerie);  //Set some default values
+      $galerie->title = '(' . $node->title . ')-' . $type;
+
+      $galerie->status = 1;   // (1 or 0): published or unpublished
+      $galerie->promote = 0;  // (1 or 0): promoted to front page or not
+      $galerie->sticky = 0;  // (1 or 0): sticky at top of lists or not
+      $galerie->comment = 1;  // 2 = comments open, 1 = comments closed, 0 = comments hidden
+      // Add author of the node
+      $galerie->uid = 1;
+
+      sitemap_rendre_noeud_enfant_de_noeud($galerie, $node);
+      $path = 'content/mytest-' . date('YmdHis');
+      $galerie->path = array('alias' => $path);
+      // Save the node
+      node_save($galerie);
+      $node->{$champ_galerie}['und'][0]['target_id'] = $galerie->nid;
+  }
+}
+
+
+function sitemap_supprimer_galerie(&$node, $champ_galerie) {
+if(sitemap_get_champ_si_existe($node, $champ_galerie)
+      && ($field_galerie = field_get_items('node', $node, $champ_galerie))) {
+      $galerie = node_load($field_galerie[0]['target_id']);
+      sitemap_supprimer_reccursivement($galerie);
+  }
+}
+
+
+function sitemap_create_node($titre, $type){
+  global $user;
+  global $language;
+  $values = array(
+    'type' => $type,
+    'uid' => $user->uid,
+    'status' => 1,
+    'comment' => 0,
+    'promote' => 0,
+  );
+  $node = entity_create('node', $values);
+  $w_node = entity_metadata_wrapper('node', $node);
+  $w_node->language->set($language->language);
+  $w_node->title->set($titre);
+  $w_node->revision->set(true);
+  $w_node->save();
+  return $node;
+}
+function sitemap_node_array_contains(){
+
+}
+function sitemap_set_node_children_of_group(&$node, &$groupe){
+  $w_node = entity_metadata_wrapper('node', $node);
+  if(//isset($w_node->field_groupe_controlant) &&
+      isset($w_node->og_group_ref)
+  ){
+    $est_membre = og_is_member('node', $groupe->nid, 'node', $node->nid);
+    if(!$est_membre){
+      $new_membership = og_membership_create(
+        'node', $groupe->nid,
+        'node', $node->nid,
+        "og_group_ref"
+      );
+      if($new_membership){
+        $new_membership = og_membership_save($new_membership);
+      }
+      $w_node->og_group_ref[] = $groupe->nid;
+      $w_node->save();
+      $r = 7;
+
+    }
+
+  }
+}
+
+function sitemap_ajoute_enfant_pour_groupe_rec(&$node, &$groupe, $ancien_groupe = null){
+  sitemap_set_node_children_of_group($node, $groupe);
+  $e =5;
+  foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant){
+    $w_enfant = entity_metadata_wrapper('node', $enfant);
+    $si_groupe_dedie = (
+        isset($w_enfant->field_si_groupe_dedie)
+        && ($w_enfant->field_si_groupe_dedie->value() == 1)
+    );
+    if(!$si_groupe_dedie){
+      sitemap_ajoute_enfant_pour_groupe_rec($enfant, $groupe, $ancien_groupe);
+    }
+  }
+}
+
+function sitemap_enleve_enfant_pour_groupe_rec(&$node, &$groupe, $ancien_groupe = null){
+  if($groupe){
+    sitemap_unset_node_children_of_group($node, $groupe);
+    foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant){
+      $titre_enfant = $enfant->title;
+      $w_enfant = entity_metadata_wrapper('node', $enfant);
+      $si_groupe_dedie = (
+          isset($w_enfant->field_si_groupe_dedie)
+          && ($w_enfant->field_si_groupe_dedie->value() == 1)
+      );
+      if(!$si_groupe_dedie){
+        sitemap_enleve_enfant_pour_groupe_rec($enfant, $groupe, $ancien_groupe);
+      }
+    }
+  }
+}
+/**
+ * global traitement d'un noeud après letraitement sitemap de son insertion
+ * @param entier $nid l'identifiant du noeud
+ */
+function _creer_sitemap($nid) {
+  $node = node_load($nid);
+  creer_maillon($node);
+  sitemap_ajouter_un_noeud_sitemap($node);
+  sitemap_ajouter_conteneurs($node);
+  sitemap_actualiser_maillons($node);
+  sitemap_gerer_galerie($node, "galerie_d_articles",
+      "field_si_galerie_d_article",
+      "field_galerie_d_articles"
+  );
+  sitemap_gerer_galerie($node, "galerie_de_vid_os",
+      "field_si_galerie_de_videos",
+      "field_galerie_de_videos"
+  );
+  sitemap_gerer_galerie($node, "galerie_de_photo",
+      "field_field_si_galerie_de_photo",
+      "field_galerie_de_photo"
+  );
+  sitemap_remplir_racine_des_conteneurs($node);
+  sitemap_ajouter_contenu_maille($node, "field_articles");
+  sitemap_ajouter_contenu_maille($node, "field_videos");
+
+  node_save($node);
+
+
+  /*$w_node = entity_metadata_wrapper('node', $node);
+  $si_groupe_dedie = (
+      isset($w_node->field_si_groupe_dedie)
+      && $w_node->field_si_groupe_dedie->value()
+  );
+  if(isset($w_node->field_groupe_controlant)
+      && !is_null($w_node->field_groupe_controlant->value())){
+    $e = 8;
+  }
+  if($si_groupe_dedie
+      && isset($w_node->field_groupe_controlant)){
+    $groupe = sitemap_create_node('groupe-pour' . $node->title, 'groupe');
+    //sitemap_set_node_children_of_group($node, $groupe);
+    sitemap_ajoute_enfant_pour_groupe_rec($node, $groupe);
+    $w_node->field_groupe_controlant = $groupe->nid;
+    $w_node->save();
+  }*/
+  sitemap_actualiser_groupe_controleur($node);
+  sitemap_actualiser_hierarchie_groupes_controleurs($node);
+
+  sitemap_actualiser_feed_boite_de_courriel($node);
+  sitemap_actualiser_calendrier($node, $old_node);
+  /*
+   * on va voir que le groupe controleur n'a pas de parent, il va chercher un parent
+   * une fois fait on passe un paramètre aux enfants si paramètre parcours réccursivité
+   * on utilise la fonction sitemap_get_first_group_controleur
+   * si vide on fait rien et on descend ensuite avec lui comme parametre.
+   * en fait si groupe cntroleur on change le paran appel de transmission...
+   */
+}
+
+
+function sitemap_supprimer_feed_boite_de_courriel($node){
+  if($node->type == "boite_de_courriel"){
+    $feed = feeds_importer(PREFIXE_NOM_MAILBOX . $node->nid);
+    $feed->delete();
+  }
+}
+function sitemap_actualiser_feed_boite_de_courriel(&$node, &$old_node = null){
+  if($node->type == 'boite_de_courriel'){
+    if(!isset($node->field_reference_mailbox)
+      || !isset($node->field_reference_mailbox['und'][0]['mailbox'])
+      || !($mailbox_reference = $node->field_reference_mailbox['und'][0]['mailbox'])
+      || ($mailbox_reference == "")
+    ){
+      $mailbox_reference = false;
+    }
+
+    if(!isset($old_node)
+      || !isset($old_node->field_reference_mailbox)
+      || !isset($old_node->field_reference_mailbox['und'][0]['mailbox'])
+      || !($old_mailbox_reference = $old_node->field_reference_mailbox['und'][0]['mailbox'])
+      || $old_mailbox_reference == ""
+    ){
+      $old_mailbox_reference = false;
+    }
+    if(!$old_mailbox_reference && ($mailbox_reference != false)){
+      $feeds_importer_id = PREFIXE_NOM_MAILBOX . $node->nid;
+      $feeds_mailbox = $node->field_reference_mailbox['und'][0]['mailbox'];
+
+      $feeds_importer = feeds_importer($feeds_importer_id);
+      $config = array(
+        'name' => $feeds_importer_id,
+        'description' => 'importe les emails d une boite courriel',
+        'fetcher' => array(
+          'plugin_key' => 'MailhandlerFetcher',
+          'config' => array(
+            'filter' => 'MailhandlerFilters',
+            'mailbox' => $feeds_mailbox,
+          ),
+        ),
+        'parser' => array(
+          'plugin_key' => 'MailhandlerParser',
+          'config' => array(
+            'available_commands' => 'status',
+            'authenticate_plugin' => 'MailhandlerAuthenticateDefault',
+            'extended_headers' => NULL,
+          ),
+        ),
+        'processor' => array(
+          'plugin_key' => 'FeedsNodeProcessor',
+          'config' => array(
+            'expire' => '-1',
+            'author' => '0',
+            'authorize' => 1,
+            'mappings' => array(
+              0 => array(
+                'source' => 'sender-name',
+                'target' => 'field_prenom',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              1 => array(
+                'source' => 'body_html',
+                'target' => 'body',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              2 => array(
+                'source' => 'subject',
+                'target' => 'title',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              3 => array(
+                'source' => 'attachments',
+                'target' => 'field_attachements:uri',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              4 => array(
+                'source' => 'from-address',
+                'target' => 'field_email_from_address',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              5 => array(
+                'source' => 'reply_to-address',
+                'target' => 'field_email_reply_to_address',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              6 => array(
+                'source' => 'return_path-address',
+                'target' => 'field_email_return_path_address',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              7 => array(
+                'source' => 'to-address',
+                'target' => 'field_email_to_address',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              8 => array(
+                'source' => 'bcc-address',
+                'target' => 'field_email_bcc_address',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              9 => array(
+                'source' => 'cc-address',
+                'target' => 'field_email_cc_address',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              10 => array(
+                'source' => 'udate',
+                'target' => 'field_email_date:start',
+                'unique' => FALSE,
+              ),
+              11 => array(
+                'source' => 'Blank source 3',
+                'target' => 'field_boite_de_courriel:etid',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+            ),
+            'insert_new' => '1',
+            'update_existing' => '0',
+            'update_non_existent' => 'skip',
+            'input_format' => 'full_html',
+            'skip_hash_check' => 0,
+            'bundle' => 'email',
+            'language' => 'fr',
+          ),
+        ),
+        'content_type' => '',
+        'update' => 0,
+        'import_period' => '900',
+        'expire_period' => 3600,
+        'import_on_create' => 1,
+        'process_in_background' => 0,
+      );
+      $feeds_importer->setConfig($config);
+      foreach (array('fetcher', 'parser', 'processor') as $type) {
+        $config_avant = $config[$type]['config'];
+        $feeds_importer->setPlugin($feeds_importer->config[$type]['plugin_key']);
+        $feeds_importer->$type->setConfig($config_avant);
+      }
+      $feeds_importer->save();
+      $new_instance = feeds_tamper_new_instance();
+      $new_instance->description = "met une reference a une entite";
+      $new_instance->disabled = FALSE; /* Edit this to true to make a default feeds_tamper disabled initially */
+      $new_instance->api_version = 2;
+      $new_instance->id = $feeds_importer_id . '-blank_source_3-default_value';
+      $new_instance->importer = $feeds_importer_id;
+      $new_instance->source = 'Blank source 3';
+      $new_instance->plugin_id = 'default_value';
+      $new_instance->settings = array(
+        'default_value' => $node->nid,
+        'only_if_empty' => 0,
+      );
+      $new_instance->weight = 0;
+      feeds_tamper_save_instance($new_instance);
+    }else if($mailbox_reference != $old_mailbox_reference){
+      $node->field_reference_mailbox['und'][0]['mailbox'] = $old_mailbox_reference;
+      drupal_set_message("attention vous ne pouvez pas modifier la bîte de courriel une fois la valeur initialisée");
+      node_save($node);
+    }
+
+  }
+}
+
+function og_roles_heriteur($group_type, $bundle, $gid = 0, $si_heriter = 0, $force_group = FALSE, $include_all = TRUE) {
+  if ($gid && !$bundle) {
+    $wrapper = entity_metadata_wrapper($group_type, $gid);
+    $bundle = $wrapper->getBundle();
+  }
+
+  // Check if overriden access exists.
+  if ($gid && !$force_group) {
+    $query_gid = og_is_group_default_access($group_type, $gid) ? 0 : $gid;
+  }
+  else {
+    $query_gid = $gid;
+  }
+
+  $query = db_select('og_role', 'ogr')
+    ->fields('ogr', array('rid', 'name'))
+    ->condition('group_type', $group_type, '=')
+    ->condition('group_bundle', $bundle, '=')
+    ->condition('gid', $query_gid, '=')
+    ->condition('de_transv', 0, '=')
+    ->condition('si_heriter', $si_heriter, '=')
+    ->orderBy('rid', 'ASC');
+
+  if (!$include_all) {
+    $query->condition('name', array(OG_ANONYMOUS_ROLE, OG_AUTHENTICATED_ROLE), 'NOT IN');
+  }
+  $rids = $query
+    ->execute()
+    ->fetchAllkeyed();
+
+  return $rids;
+}
+
+function get_role_child($groupe_parent, $groupe = null){
+  $rids = null;
+  $nids = array_keys(og_roles_heriteur('node',  $groupe_parent->type, $groupe_parent->nid, 1));
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name'));
+  if($groupe){
+    $query->condition('ogr.group_bundle', $groupe->type, '=');
+    $query->condition('ogr.gid', $groupe->nid, '=');
+  }if(!empty($nids)){
+    $query->condition('ogr.de_transv', 0, '=');
+    $query->condition('ogr.parent_rid', $nids, 'IN');
+    $query->orderBy('rid', 'ASC');
+    $rids = $query->execute()->fetchAllkeyed();
+  }
+  return $rids;
+}
+
+/**
+ * obtient tous les rôles héritants des roles
+ * @param entier $rid l'identifiant du rôle parenr
+ * @return An feyed array rid => name
+ */
+function sitemap_get_children_of_role($rid){
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name'));
+  $query->condition('ogr.parent_rid', $rid, '=');
+  $query->condition('ogr.rid', $rid, '!=');
+  $query->condition('ogr.de_transv', 0, '!=');
+  $query->orderBy('rid', 'ASC');
+  $rids = $query->execute()->fetchAllkeyed();
+
+  return $rids;
+}
+
+/**
+ *
+ * @param unknown $rid
+ * @return An
+ */
+function sitemap_get_all_type_children_of_role($rid){
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name'));
+  $query->condition('ogr.parent_rid', $rid, '=');
+  $query->condition('ogr.rid', $rid, '!=');
+  $query->orderBy('rid', 'ASC');
+  $rids = $query->execute()->fetchAllkeyed();
+
+  return $rids;
+}
+
+/**
+ * obtient tous les sous rôles transveral des roles
+ * @param entier $rid l'identifiant du rôle parenr
+ * @return An feyed array rid => name
+ */
+function sitemap_get_sub_transv_of_role($rid){
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name'));
+  $query->condition('ogr.parent_rid', $rid, '=');
+  $query->condition('ogr.rid', $rid, '!=');
+  $query->condition('ogr.de_transv', 1, '!=');
+  $query->orderBy('rid', 'ASC');
+  $rids = $query->execute()->fetchAllkeyed();
+
+  return $rids;
+}
+
+
+function sitemap_set_controleur_de_groupe_controlant(&$controleur, $goupe_controlant){
+  if($goupe_controlant){
+    $w_controleur = entity_metadata_wrapper('node', $controleur);
+    if(isset($w_controleur->field_heritage_de_groupe)){
+      if($w_controleur->field_heritage_de_groupe->value() != $goupe_controlant->nid){
+
+        if($ancien_groupe_controleur = $w_controleur->field_heritage_de_groupe->value()){
+          $tab_enfants = get_role_child($ancien_groupe_controleur);
+          if(!empty($tab_enfants)){
+            foreach(array_keys(get_role_child($ancien_groupe_controleur)) as $rid_delete){
+              og_role_delete($rid_delete);
+            }
+          }
+        }
+        $role_heriteur = og_roles_heriteur('node',  $goupe_controlant->type, $goupe_controlant->nid, 1);
+        $les_perms = og_role_permissions($role_heriteur);
+        foreach($role_heriteur as $rid => $role_title){
+          //le titre doit avoir max 64 car selon spec table
+          $titre = $role_title . "(herite)"; // . $goupe_controlant->title . ")";
+          $role_nouv = og_role_create($titre, 'node', $controleur->nid, $controleur->type);
+          $role_nouv->parent_rid = $rid;
+          og_role_save($role_nouv);
+          if(isset($les_perms[$rid])){
+            og_role_change_permissions($role_nouv->rid, $les_perms[$rid]);
+            //og_role_grant_permissions($role_nouv->rid, $perms_ids);
+          }
+          foreach(og_extras_get_users_by_roles($goupe_controlant->nid, array($rid)) as $cle => $uid_par){
+            permission_reference_add_user_to_group($uid_par->uid, $controleur->nid);
+            og_role_grant('node', $controleur->nid, $uid_par->uid, $role_nouv->rid);
+          }
+        }
+        //@heritageDesRoles
+        //élimineer la scrap... trouver les sous grupes
+        $w_controleur->field_heritage_de_groupe->set($goupe_controlant->nid);
+        $w_controleur->save();
+      }
+    }
+  }
+}
+
+/**
+ * met le bon parent au groupes contôleurs de niveau 1 à partir du noeud ou sinon, si est réccursif,
+ * fait tout les contrôleurs en dessous ou de même niveau.
+ * @param unknown $node le noeud dans la hiérarchie
+ * @param unknown $groupe_contoleur_parent  le groupe contrôleur (permet d'éviter un get)
+ * @param string $recursif si l'opération se fait réccursivement
+ */
+function sitemap_actualiser_hierarchie_groupes_controleurs(&$node, $groupe_contoleur_parent = null, $recursif = false, $old_node = false){
+  if($controleur = sitemap_get_groupe_controlant($node)){
+    if($groupe_contoleur_parent
+        || ($groupe_contoleur_parent = sitemap_get_first_group_controleur($node))
+    ){
+      sitemap_set_controleur_de_groupe_controlant($controleur, $groupe_contoleur_parent);
+    }
+    $groupe_contoleur_parent = $controleur;
+    if($recursif){
+      foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant){
+        sitemap_actualiser_hierarchie_groupes_controleurs($enfant, $groupe_contoleur_parent, $recursif);
+      }
+    }else if($old_node
+        && !isset($old_node->field_heritage_de_groupe['und'][0]['target_id'])
+    ){
+      foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant){
+        sitemap_actualiser_hierarchie_groupes_controleurs($enfant, $groupe_contoleur_parent);
+      }
+    }
+  }else{
+    foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant){
+      sitemap_actualiser_hierarchie_groupes_controleurs($enfant, $groupe_contoleur_parent, $recursif);
+    }
+  }
+}
+
+function sitemap_remplir_racine_des_conteneurs(&$node) {
+  if(field_info_instance('node', "field_racine_des_conteneurs", $node->type)
+      && !isset($node->field_racine_des_conteneurs['und'])){
+    if($nid_first_page = sitemap_get_first_parent_page($node)){
+      $node->field_racine_des_conteneurs['und'][0]['target_id'] = $nid_first_page;
+    }
+  }
+}
+
+function sitemap_get_first_parent_page($node) {
+  if(variable_get('est_page_' . $node->type, FALSE)){
+    return $node->nid;
+  }else if($parent = sitemap_get_noeud_parent($node)){
+    return sitemap_get_first_parent_page($parent);
+  }else{
+    return false;
+  }
+}
+
+
+/**
+ * fonction retournant le statut d'un noeud selon la durée
+ * @param noeud $node
+ *  la référence du noeud sur lequel effectuer la consultation
+ * @return number
+ *  clé du statut s'il en a une sinon 0
+ */
+function sitemap_retourner_statut_selon_duree(&$node) {
+  if(isset($node->field_periode_en_vigueur['und'][0])
+      && isset($node->field_periode_en_vigueur['und'][0]['value'])
+      && isset($node->field_periode_en_vigueur['und'][0]['value2'])
+      ) {
+    $debut = $node->field_periode_en_vigueur['und'][0]['value'];
+    $fin = $node->field_periode_en_vigueur['und'][0]['value2'];
+    $date = new DateTime();
+    $date_actuelle = $date->getTimestamp();
+    $test = 8;
+    if($date_actuelle > $fin) { //terminé
+      return 3;
+    }else if($date_actuelle < $debut) { //a venir
+      return 1;
+    }else { //en cours
+      return 2;
+    }
+  }else {
+    return 0;
+  }
+}
+
+/**
+ * obtien une liste des sous enfants du noeud
+ * @param référence au noeud $node
+ */
+function sitemap_get_noeuds_enfants(&$node) {
+  $noeud_enfants = array();
+  if(isset($node->field_terme_parent_sitemap['und'][0]['tid'])
+      && ($vocab = taxonomy_vocabulary_machine_name_load('sitemap'))) {
+    $tid = $node->field_terme_parent_sitemap['und'][0]['tid'];
+    foreach(taxonomy_get_children($tid, $vocab->vid) as $tid_fetch => $terme_fetch) {
+      if($noeud_enfant = sitemap_get_noeud_selon_tid($tid_fetch)) {
+        $noeud_enfants[] = $noeud_enfant;
+      }
+    }
+  }
+  return $noeud_enfants;
+}
+
+/**
+ * change le statut d'archivage
+ * @param noeud $node
+ *  le noeud à appliquer aux sous enfants
+ * @param entier $statut_afectation
+ *  la clé du statut
+ */
+function sitemap_affecter_statut_archivage(&$node, $statut_afectation) {
+  $node->field_statut_archivage['und'][0]['value'] = $statut_afectation;
+
+
+  // si default est null on affecte 4
+  if(field_info_instance('node', "field_forcer_statut_archivage", $node->type)
+      && !isset($node->field_forcer_statut_archivage['und'][0]['value'])) {
+    $node->field_forcer_statut_archivage['und'][0]['value'] = 4;
+  }
+  node_save($node);
+  foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant) {
+    watchdog('sitemap', 'enfant parcouru' . $enfant->title);
+
+      //préallocation du statut archivage défaut pour vide
+    if(field_info_instance('node', "field_forcer_statut_archivage", $node->type)
+        && !isset($node->field_forcer_statut_archivage['und'][0]['value'])) {
+      $node->field_forcer_statut_archivage['und'][0]['value'] = 4;
+    }
+
+    if(field_info_instance('node', "field_statut_archivage", $enfant->type)
+        && (
+          !isset($enfant->field_statut_archivage['und'][0]['value'])
+          || $enfant->field_statut_archivage['und'][0]['value'] != $statut_afectation
+        )
+        && !field_info_instance('node', "field_periode_en_vigueur", $enfant->type)
+        && !(
+          isset($enfant->field_forcer_statut_archivage['und'][0]['value'])
+          && $enfant->field_forcer_statut_archivage['und'][0]['value'] != 4
+        )
+    ) {
+      sitemap_affecter_statut_archivage($enfant, $statut_afectation);
+    }
+
+  }
+}
+
+function sitemap_get_champ_si_existe($node, $nom_champ) {
+  return field_info_instance('node', $nom_champ, $node->type);
+}
+
+/**
+ * Actualise le statut d'archivage et sauvegarde le noeud
+ * @param reference du noeud $node
+ */
+function sitemap_actualiser_statut_archivage(&$node) {
+  if(($info_statut = field_info_instance('node', "field_statut_archivage", $node->type))
+      && ($info_forcer = field_info_instance('node', "field_forcer_statut_archivage", $node->type))
+      ){
+    $e= 0;
+  }
+  if(field_info_instance('node', "field_statut_archivage", $node->type)) {
+    if(!isset($node->field_statut_archivage['und'][0])
+        || !($statut_init = $node->field_statut_archivage['und'][0]['value'])){
+      $statut_init = null;
+    }
+    if(field_info_instance('node', "field_forcer_statut_archivage", $node->type)) {
+      if(!isset($node->field_forcer_statut_archivage['und'][0]['value'])
+        || !($forcer_statut = $node->field_forcer_statut_archivage['und'][0]['value'])) {
+        $forcer_statut = 4;
+      }
+      if($forcer_statut != 4) {
+        if($forcer_statut != $statut_init) {
+          sitemap_affecter_statut_archivage($node, $forcer_statut);
+        }
+      }else if(($noeud_parent = sitemap_get_noeud_parent($node))
+          && isset($noeud_parent->field_statut_archivage['und'][0]['value'])
+          && ($statut_parent = $noeud_parent->field_statut_archivage['und'][0]['value']) != $statut_init
+          ){
+        sitemap_affecter_statut_archivage($node, $statut_parent);
+      }
+    }
+    else if(($statut_duree = sitemap_retourner_statut_selon_duree($node))
+        && $statut_init != $statut_duree) {
+      sitemap_affecter_statut_archivage($node, $statut_duree);
+    }
+
+  }
+}
+
+//si le noeud est un conteneur, on actualise ses maillons
+function sitemap_actualiser_maillons(&$node) {
+  if(isset($node->field_ajouter_sous_contenu['und'])) {
+    foreach($node->field_ajouter_sous_contenu['und'] as $cle => $entree) {
+      $maillon = new stdClass();
+      $maillon->type = 'maillon_contenu';
+      $maillon->language = LANGUAGE_NONE;
+      node_object_prepare($maillon);
+      $maillon->title = '(' . $node->title . ')-' . $instance['field_name'];
+
+      $maillon->status = 1;   // (1 or 0): published or unpublished
+      $maillon->promote = 0;  // (1 or 0): promoted to front page or not
+      $maillon->sticky = 0;  // (1 or 0): sticky at top of lists or not
+      $maillon->comment = 1;  // 2 = comments open, 1 = comments closed, 0 = comments hidden
+      // Add author of the node
+      $maillon->uid = 1;
+      $maillon->field_contenu_refere['und'][0]['target_id'] = $entree['target_id'];
+      sitemap_rendre_noeud_enfant_de_noeud($maillon, $node);
+      $path = 'content/mytest-' . date('YmdHis');
+      $maillon->path = array('alias' => $path);
+      node_save($maillon);
+    }
+    $node->field_ajouter_sous_contenu['und'] = null;
+    node_save($node);
+  }
+}
+
+function sitemap_cree_maillon($nid_contenu_refere, $noeud_parent){
+  $maillon = new stdClass();  // Create a new node object
+  $maillon->type = 'maillon_contenu';  // Content type
+  $maillon->language = LANGUAGE_NONE;  // Or e.g. 'en' if locale is enabled
+  node_object_prepare($maillon);  //Set some default values
+  $maillon->title = '(' . $noeud_parent->title . ')' . $noeud_parent->type;
+  $maillon->field_contenu_refere['und'][0]['target_id'] = $nid_contenu_refere;
+
+  $maillon->status = 1;   // (1 or 0): published or unpublished
+  $maillon->promote = 0;  // (1 or 0): promoted to front page or not
+  $maillon->sticky = 0;  // (1 or 0): sticky at top of lists or not
+  $maillon->comment = 1;  // 2 = comments open, 1 = comments closed, 0 = comments hidden
+  // Add author of the node
+  $maillon->uid = 1;
+
+  sitemap_rendre_noeud_enfant_de_noeud($maillon, $noeud_parent);
+  $path = 'content/mytest-' . date('YmdHis');
+  $maillon->path = array('alias' => $path);
+  // Save the node
+  node_save($maillon);
+  return $maillon;
+}
+
+function sitemap_ajouter_contenu_maille(&$node, $champ_contenu){
+  if(sitemap_get_champ_si_existe($node, $champ_contenu)
+      && ($champ_item = field_get_items('node', $node, $champ_contenu))) {
+        foreach($champ_item as $cle => $val){
+          $nid_sous_contenu = $val['target_id'];
+          sitemap_cree_maillon($val['target_id'], $node);
+        }
+        $node->{$champ_contenu}['und'] = null;
+  }
+}
+
+function sitemap_desinscrire_enfant_de_groupe_controlant($node, $groupe){
+  foreach(sitemap_get_noeuds_enfants($node) as $cle => $enfant){
+    $w_enfant = entity_metadata_wrapper('node', $enfant);
+    $si_groupe_dedie = (
+        isset($w_enfant->field_si_groupe_dedie)
+        && ($w_enfant->field_si_groupe_dedie->value() == 1)
+    );
+    if(!$si_groupe_dedie){
+      $membership = og_get_membership(
+        "node", $groupe->nid,
+        "node", $node->nid
+      );
+      og_membership_delete_multiple(array($membership->id));
+      $w_node->save();
+
+      sitemap_desinscrire_enfant_de_groupe_controlant($enfant, $groupe);
+    }
+  }
+}
+
+function sitemap_entity_reference_remove_value(&$node, $field_name, $id){
+  $w_node = entity_metadata_wrapper('node', $node);
+  if(isset($node->{$field_name})){
+    $obj_field = $node->$field_name;
+    foreach($obj_field as $lang => $list){
+      if(isset($obj_field[$lang])){
+        foreach($list as $delta => $item)  {
+          if (isset($item['target_id']) && !node_load($item['target_id'])
+              || ($item['target_id'] == $id)
+          ) {
+            unset($node->{$field_name}[$lang][$delta]);
+          }
+        }
+      }
+    }
+  }
+}
+
+
+
+function sitemap_unset_node_children_of_group(&$node, $groupe){
+  $membership = og_get_membership(
+    "node", $groupe->nid,
+    "node", $node->nid
+  );
+  //$w_node->field_groupe_controlant->set(null);
+  if($membership){
+    og_membership_delete_multiple(array($membership->id));
+  }
+  sitemap_entity_reference_remove_value($node, "og_group_ref", $groupe->nid);
+  node_save($node);
+}
+
+
+function sitemap_og_role_grant($entity_type, $gid, $uid, $rid) {
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name', 'gid', 'group_type'));
+  $query->condition('ogr.parent_rid', $rid, '=');
+  $rids = $query->execute()->fetchAllAssoc('rid');
+  foreach($rids as $rid_enfant => $row){
+    permission_reference_add_user_to_group($uid, $row->gid);
+    og_role_grant('node', $row->gid, $uid, $rid_enfant);
+  }
+}
+
+
+function sitemap_og_role_revoke($entity_type, $gid, $uid, $rid) {
+  $query = db_select('og_role', 'ogr');
+  $query->fields('ogr', array('rid', 'name', 'gid', 'group_type'));
+  $query->condition('ogr.parent_rid', $rid, '=');
+  $rids = $query->execute()->fetchAllAssoc('rid');
+  foreach($rids as $rid_enfant => $row){
+    og_role_revoke('node', $row->gid, $uid, $rid_enfant);
+  }
+}
+
+include_once 'hierarchie_des_groupes.service.inc';
+
+/**
+ * ajoute un groupe controleur si il le faut et met tous les enfants du noeud comme contenu
+ * du groupe contôleur
+ * @param unknown $node le noeud dans la hiérarchie
+ * @param unknown $old_node le vieux noeud dans la hiérarchie
+ */
+function sitemap_actualiser_groupe_controleur(&$node, $old_node = null){
+  $w_node = entity_metadata_wrapper('node', $node);
+  $w_old_node = (isset($old_node)) ? entity_metadata_wrapper('node', $old_node) : false;
+
+  $groupe_controlant = (isset($w_node->field_groupe_controlant)) ?
+    $w_node->field_groupe_controlant->value() : null;
+
+  $goupe_controlant_parent = sitemap_get_first_group_controleur($node);
+
+
+  $si_old_node_groupe_dedie = ($w_old_node
+      && isset($w_old_node->field_si_groupe_dedie)
+      && ($w_old_node->field_si_groupe_dedie->value() == 1)
+  );
+
+  $si_groupe_dedie = (isset($w_node->field_si_groupe_dedie)
+      && ($w_node->field_si_groupe_dedie->value() == 1)
+  );
+
+  if(!$si_old_node_groupe_dedie && $si_groupe_dedie){
+    if($goupe_controlant_parent){
+      sitemap_enleve_enfant_pour_groupe_rec($node, $goupe_controlant_parent);
+    }
+    if(is_null($groupe_controlant)){
+      $groupe = sitemap_create_node('groupe-pour ' . $node->title, 'groupe');
+    }else{
+      $groupe = node_load($groupe_controlant->nid);
+    }
+    $w_groupe = entity_metadata_wrapper('node', $groupe);
+    $w_groupe->og_roles_permissions->set(1);
+    $w_groupe->save();
+    ////// actualiser groupe contôlant...
+    sitemap_ajoute_enfant_pour_groupe_rec($node, $groupe);
+    $w_node->field_groupe_controlant = $groupe->nid;
+    $w_node->save();
+  }
+
+  if($si_old_node_groupe_dedie && !$si_groupe_dedie && !is_null($groupe_controlant)){
+    sitemap_enleve_enfant_pour_groupe_rec($node, $groupe_controlant);
+    $w_node->save();
+  }
+
+  if(!$si_groupe_dedie && $goupe_controlant_parent){
+    sitemap_ajoute_enfant_pour_groupe_rec($node, $goupe_controlant_parent);
+  }
+}
+
+function sitemap_get_first_group_controleur($node){
+  $noeud_parent =  sitemap_get_noeud_parent($node);
+  if($noeud_parent){
+    //si tout est ok
+    $w_noeud_parent =  entity_metadata_wrapper('node', $noeud_parent);
+    $groupe_controlant = (isset($w_noeud_parent->field_groupe_controlant)) ?
+    $w_noeud_parent->field_groupe_controlant->value() : null;
+
+    $si_groupe_dedie = (isset($w_noeud_parent->field_si_groupe_dedie)
+        && ($w_noeud_parent->field_si_groupe_dedie->value() == 1)
+    );
+
+    if($si_groupe_dedie && $groupe_controlant){
+      return node_load($groupe_controlant->nid);
+    }else{
+      return sitemap_get_first_group_controleur($noeud_parent);
+    }
+  }else if($node->type == "groupe"){
+    return $node;
+  }else{
+    return false;
+  }
+}
+
+
+/**
+ * global traitement de modification
+ * @param entier $nid
+ *  identifiant du noeud sur lequel la modification est réalisé
+ * @param noeud $old_node
+ *  le noeud avant le traitement des modif.. juste après le submit
+ */
+function _modifier_sitemap($nid, $old_node) {
+  $node = node_load($nid);
+  $noeud_delpace_parent = array();
+  $goupe_controlant_parent = sitemap_get_first_group_controleur($old_node);
+  sitemap_actualiser_sitemap($node, $old_node, true, $noeud_delpace_parent);
+
+  sitemap_ajouter_conteneurs($node);
+  sitemap_actualiser_maillons($node);
+
+  sitemap_gerer_galerie($node, "galerie_d_articles",
+      "field_si_galerie_d_article",
+      "field_galerie_d_articles"
+  );
+  sitemap_gerer_galerie($node, "galerie_de_vid_os",
+      "field_si_galerie_de_videos",
+      "field_galerie_de_videos"
+  );
+  sitemap_gerer_galerie($node, "galerie_de_photo",
+      "field_field_si_galerie_de_photo",
+      "field_galerie_de_photo"
+  );
+  sitemap_ajouter_contenu_maille($node, "field_articles");
+  sitemap_ajouter_contenu_maille($node, "field_videos");
+  node_save($node);
+
+
+  if(!empty($noeud_delpace_parent)
+      && ($noeud_deplace = node_load($noeud_delpace_parent['nid']))
+  ){
+    if(isset($noeud_delpace_parent['controleur'])){
+      sitemap_enleve_enfant_pour_groupe_rec($noeud_deplace, $noeud_delpace_parent['controleur']);
+    }
+    sitemap_actualiser_groupe_controleur($noeud_deplace, null);
+  }
+
+  sitemap_enleve_enfant_pour_groupe_rec($node, $goupe_controlant_parent);
+  sitemap_actualiser_groupe_controleur($node, $old_node);
+
+  if(!empty($noeud_delpace_parent)){
+    sitemap_actualiser_hierarchie_groupes_controleurs($noeud_deplace, null, false, $old_node);
+  }
+  sitemap_actualiser_hierarchie_groupes_controleurs($node, null, false, $old_node);
+  sitemap_actualiser_feed_boite_de_courriel($node, $old_node);
+  sitemap_actualiser_calendrier($node, $old_node);
+  //rules_invoke_event_by_args('sitemap_test_event', array('node' => $node, 'old_node' => $old_node));
+  return;
+}
+
+function sitemap_get_mail_mime($mime_type){
+    $entre = array(
+      'application/andrew-inset' => '',
+      'application/atom' => '',
+      'application/atomcat+xml' => '',
+      'application/atomserv+xml' => '',
+      'application/cap' => '',
+      'application/cu-seeme' => '',
+      'application/dsptype' => '',
+      'application/epub+zip' => '',
+      'application/hta' => '',
+      'application/java-archive' => '',
+      'application/java-serialized-object' => '',
+      'application/java-vm' => '',
+      'application/mac-binhex40' => '',
+      'application/mathematica' => '',
+      'application/msaccess' => '',
+      'application/msword' => 'fa-file-word-o',
+      'application/octet-stream' => 'fa-file-word-o',
+      'application/oda' => '',
+      'application/ogg' => '',
+      'application/pdf' => 'fa-file-pdf-o',
+      'application/pgp-keys' => '',
+      'application/pgp-signature' => '',
+      'application/pics-rules' => '',
+      'application/postscript' => '',
+      'application/rar' => '',
+      'application/rdf+xml' => '',
+      'application/rss+xml' => '',
+      'application/rtf' => '',
+      'application/smil' => '',
+      'application/vnd.amazon.ebook' => '',
+      'application/vnd.cinderella' => '',
+      'application/vnd.google-earth.kml+xml' => '',
+      'application/vnd.google-earth.kmz' => '',
+      'application/vnd.mozilla.xul+xml' => '',
+      'application/vnd.ms-excel' => '',
+      'application/vnd.ms-excel.addin.macroEnabled.12' => '',
+      'application/vnd.ms-excel.sheet.binary.macroEnabled.12' => '',
+      'application/vnd.ms-excel.sheet.macroEnabled.12' => '',
+      'application/vnd.ms-excel.template.macroEnabled.12' => '',
+      'application/vnd.ms-pki.seccat' => '',
+      'application/vnd.ms-pki.stl' => '',
+      'application/vnd.ms-powerpoint' => '',
+      'application/vnd.ms-powerpoint.addin.macroEnabled.12' => '',
+      'application/vnd.ms-powerpoint.presentation.macroEnabled.12' => '',
+      'application/vnd.ms-powerpoint.slideshow.macroEnabled.12' => '',
+      'application/vnd.ms-powerpoint.template.macroEnabled.12' => '',
+      'application/vnd.ms-word.document.macroEnabled.12' => '',
+      'application/vnd.ms-word.template.macroEnabled.12' => '',
+      'application/vnd.ms-xpsdocument' => '',
+      'application/vnd.oasis.opendocument.chart' => '',
+      'application/vnd.oasis.opendocument.database' => '',
+      'application/vnd.oasis.opendocument.formula' => '',
+      'application/vnd.oasis.opendocument.graphics' => '',
+      'application/vnd.oasis.opendocument.graphics-template' => '',
+      'application/vnd.oasis.opendocument.image' => '',
+      'application/vnd.oasis.opendocument.presentation' => '',
+      'application/vnd.oasis.opendocument.presentation-template' => '',
+      'application/vnd.oasis.opendocument.spreadsheet' => '',
+      'application/vnd.oasis.opendocument.spreadsheet-template' => '',
+      'application/vnd.oasis.opendocument.text' => '',
+      'application/vnd.oasis.opendocument.text-master' => '',
+      'application/vnd.oasis.opendocument.text-template' => '',
+      'application/vnd.oasis.opendocument.text-web' => '',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation' => '',
+      'application/vnd.openxmlformats-officedocument.presentationml.slideshow' => '',
+      'application/vnd.openxmlformats-officedocument.presentationml.template' => '',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => '',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.template' => '',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'fa-file-word-o',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.template' => '',
+      'application/vnd.rim.cod' => '',
+      'application/vnd.smaf' => '',
+      'application/vnd.stardivision.calc' => '',
+      'application/vnd.stardivision.chart' => '',
+      'application/vnd.stardivision.draw' => '',
+      'application/vnd.stardivision.impress' => '',
+      'application/vnd.stardivision.math' => '',
+      'application/vnd.stardivision.writer' => '',
+      'application/vnd.stardivision.writer-global' => '',
+      'application/vnd.sun.xml.calc' => '',
+      'application/vnd.sun.xml.calc.template' => '',
+      'application/vnd.sun.xml.draw' => '',
+      'application/vnd.sun.xml.draw.template' => '',
+      'application/vnd.sun.xml.impress' => '',
+      'application/vnd.sun.xml.impress.template' => '',
+      'application/vnd.sun.xml.math' => '',
+      'application/vnd.sun.xml.writer' => '',
+      'application/vnd.sun.xml.writer.global' => '',
+      'application/vnd.sun.xml.writer.template' => '',
+      'application/vnd.symbian.install' => '',
+      'application/vnd.visio' => '',
+      'application/vnd.wap.wbxml' => '',
+      'application/vnd.wap.wmlc' => '',
+      'application/vnd.wap.wmlscriptc' => '',
+      'application/wordperfect' => '',
+      'application/wordperfect5.1' => '',
+      'application/x-123' => '',
+      'application/x-7z-compressed' => '',
+      'application/x-abiword' => '',
+      'application/x-apple-diskimage' => '',
+      'application/x-bcpio' => '',
+      'application/x-bittorrent' => '',
+      'application/x-cab' => '',
+      'application/x-cbr' => '',
+      'application/x-cbz' => '',
+      'application/x-cdf' => '',
+      'application/x-cdlink' => '',
+      'application/x-chess-pgn' => '',
+      'application/x-cpio' => '',
+      'application/x-debian-package' => '',
+      'application/x-director' => '',
+      'application/x-dms' => '',
+      'application/x-doom' => '',
+      'application/x-dvi' => '',
+      'application/x-flac' => '',
+      'application/x-font' => '',
+      'application/x-freemind' => '',
+      'application/x-futuresplash' => '',
+      'application/x-gnumeric' => '',
+      'application/x-go-sgf' => '',
+      'application/x-graphing-calculator' => '',
+      'application/x-gtar' => '',
+      'application/x-hdf' => '',
+      'application/x-httpd-eruby' => '',
+      'application/x-httpd-php' => '',
+      'application/x-httpd-php-source' => '',
+      'application/x-httpd-php3' => '',
+      'application/x-httpd-php3-preprocessed' => '',
+      'application/x-httpd-php4' => '',
+      'application/x-ica' => '',
+      'application/x-internet-signup' => '',
+      'application/x-iphone' => '',
+      'application/x-iso9660-image' => '',
+      'application/x-java-jnlp-file' => '',
+      'application/x-javascript' => '',
+      'application/x-jmol' => '',
+      'application/x-kchart' => '',
+      'application/x-killustrator' => '',
+      'application/x-koan' => '',
+      'application/x-kpresenter' => '',
+      'application/x-kspread' => '',
+      'application/x-kword' => '',
+      'application/x-latex' => '',
+      'application/x-lha' => '',
+      'application/x-lyx' => '',
+      'application/x-lzh' => '',
+      'application/x-lzx' => '',
+      'application/x-maker' => '',
+      'application/x-mif' => '',
+      'application/x-mobipocket-ebook' => '',
+      'application/x-mobipocket-ebook' => '',
+      'application/x-ms-wmd' => '',
+      'application/x-ms-wmz' => '',
+      'application/x-msdos-program' => '',
+      'application/x-msi' => '',
+      'application/x-netcdf' => '',
+      'application/x-ns-proxy-autoconfig' => '',
+      'application/x-nwc' => '',
+      'application/x-object' => '',
+      'application/x-oz-application' => '',
+      'application/x-pkcs7-certreqresp' => '',
+      'application/x-pkcs7-crl' => '',
+      'application/x-python-code' => '',
+      'application/x-quicktimeplayer' => '',
+      'application/x-redhat-package-manager' => '',
+      'application/x-shar' => '',
+      'application/x-shockwave-flash' => '',
+      'application/x-stuffit' => '',
+      'application/x-sv4cpio' => '',
+      'application/x-sv4crc' => '',
+      'application/x-tar' => '',
+      'application/x-tcl' => '',
+      'application/x-tex-gf' => '',
+      'application/x-tex-pk' => '',
+      'application/x-texinfo' => '',
+      'application/x-trash' => '',
+      'application/x-troff' => '',
+      'application/x-troff-man' => '',
+      'application/x-troff-me' => '',
+      'application/x-troff-ms' => '',
+      'application/x-ustar' => '',
+      'application/x-wais-source' => '',
+      'application/x-wingz' => '',
+      'application/x-x509-ca-cert' => '',
+      'application/x-xcf' => '',
+      'application/x-xfig' => '',
+      'application/x-xpinstall' => '',
+      'application/xhtml+xml' => '',
+      'application/xml' => '',
+      'application/zip' => '',
+      'audio/basic' => '',
+      'audio/midi' => '',
+      'audio/mp4' => '',
+      'audio/mpeg' => '',
+      'audio/ogg' => '',
+      'audio/prs.sid' => '',
+      'audio/webm' => '',
+      'audio/x-aiff' => '',
+      'audio/x-gsm' => '',
+      'audio/x-matroska' => '',
+      'audio/x-mpegurl' => '',
+      'audio/x-ms-wax' => '',
+      'audio/x-ms-wma' => '',
+      'audio/x-pn-realaudio' => '',
+      'audio/x-realaudio' => '',
+      'audio/x-scpls' => '',
+      'audio/x-sd2' => '',
+      'audio/x-wav' => '',
+      'chemical/x-alchemy' => '',
+      'chemical/x-cache' => '',
+      'chemical/x-cache-csf' => '',
+      'chemical/x-cactvs-binary' => '',
+      'chemical/x-cdx' => '',
+      'chemical/x-cerius' => '',
+      'chemical/x-chem3d' => '',
+      'chemical/x-chemdraw' => '',
+      'chemical/x-cif' => '',
+      'chemical/x-cmdf' => '',
+      'chemical/x-cml' => '',
+      'chemical/x-compass' => '',
+      'chemical/x-crossfire' => '',
+      'chemical/x-csml' => '',
+      'chemical/x-ctx' => '',
+      'chemical/x-cxf' => '',
+      'chemical/x-embl-dl-nucleotide' => '',
+      'chemical/x-galactic-spc' => '',
+      'chemical/x-gamess-input' => '',
+      'chemical/x-gaussian-checkpoint' => '',
+      'chemical/x-gaussian-cube' => '',
+      'chemical/x-gaussian-input' => '',
+      'chemical/x-gaussian-log' => '',
+      'chemical/x-gcg8-sequence' => '',
+      'chemical/x-genbank' => '',
+      'chemical/x-hin' => '',
+      'chemical/x-isostar' => '',
+      'chemical/x-jcamp-dx' => '',
+      'chemical/x-kinemage' => '',
+      'chemical/x-macmolecule' => '',
+      'chemical/x-macromodel-input' => '',
+      'chemical/x-mdl-molfile' => '',
+      'chemical/x-mdl-rdfile' => '',
+      'chemical/x-mdl-rxnfile' => '',
+      'chemical/x-mdl-sdfile' => '',
+      'chemical/x-mdl-tgf' => '',
+      'chemical/x-mmcif' => '',
+      'chemical/x-mol2' => '',
+      'chemical/x-molconn-Z' => '',
+      'chemical/x-mopac-graph' => '',
+      'chemical/x-mopac-input' => '',
+      'chemical/x-mopac-out' => '',
+      'chemical/x-mopac-vib' => '',
+      'chemical/x-ncbi-asn1-ascii' => '',
+      'chemical/x-ncbi-asn1-binary' => '',
+      'chemical/x-ncbi-asn1-spec' => '',
+      'chemical/x-pdb' => '',
+      'chemical/x-rosdal' => '',
+      'chemical/x-swissprot' => '',
+      'chemical/x-vamas-iso14976' => '',
+      'chemical/x-vmd' => '',
+      'chemical/x-xtel' => '',
+      'chemical/x-xyz' => '',
+      'image/gif' => '',
+      'image/ief' => '',
+      'image/jpeg' => '',
+      'image/pcx' => '',
+      'image/png' => '',
+      'image/svg+xml' => '',
+      'image/tiff' => '',
+      'image/vnd.djvu' => '',
+      'image/vnd.microsoft.icon' => '',
+      'image/vnd.wap.wbmp' => '',
+      'image/webp' => '',
+      'image/x-cmu-raster' => '',
+      'image/x-coreldraw' => '',
+      'image/x-coreldrawpattern' => '',
+      'image/x-coreldrawtemplate' => '',
+      'image/x-corelphotopaint' => '',
+      'image/x-jg' => '',
+      'image/x-jng' => '',
+      'image/x-ms-bmp' => '',
+      'image/x-photoshop' => '',
+      'image/x-portable-anymap' => '',
+      'image/x-portable-bitmap' => '',
+      'image/x-portable-graymap' => '',
+      'image/x-portable-pixmap' => '',
+      'image/x-rgb' => '',
+      'image/x-xbitmap' => '',
+      'image/x-xpixmap' => '',
+      'image/x-xwindowdump' => '',
+      'message/rfc822' => '',
+      'model/iges' => '',
+      'model/mesh' => '',
+      'model/vrml' => '',
+      'text/calendar' => '',
+      'text/css' => '',
+      'text/csv' => '',
+      'text/h323' => '',
+      'text/html' => '',
+      'text/iuls' => '',
+      'text/mathml' => '',
+      'text/plain' => '',
+      'text/richtext' => '',
+      'text/scriptlet' => '',
+      'text/tab-separated-values' => '',
+      'text/texmacs' => '',
+      'text/vnd.sun.j2me.app-descriptor' => '',
+      'text/vnd.wap.wml' => '',
+      'text/vnd.wap.wmlscript' => '',
+      'text/vtt' => '',
+      'text/x-bibtex' => '',
+      'text/x-boo' => '',
+      'text/x-c++hdr' => '',
+      'text/x-c++src' => '',
+      'text/x-chdr' => '',
+      'text/x-component' => '',
+      'text/x-csh' => '',
+      'text/x-csrc' => '',
+      'text/x-diff' => '',
+      'text/x-dsrc' => '',
+      'text/x-haskell' => '',
+      'text/x-java' => '',
+      'text/x-literate-haskell' => '',
+      'text/x-moc' => '',
+      'text/x-pascal' => '',
+      'text/x-pcs-gcd' => '',
+      'text/x-perl' => '',
+      'text/x-python' => '',
+      'text/x-setext' => '',
+      'text/x-sh' => '',
+      'text/x-tcl' => '',
+      'text/x-tex' => '',
+      'text/x-vcalendar' => '',
+      'text/x-vcard' => '',
+      'video/3gpp' => '',
+      'video/dl' => '',
+      'video/dv' => '',
+      'video/fli' => '',
+      'video/gl' => '',
+      'video/mp4' => '',
+      'video/mpeg' => '',
+      'video/ogg' => '',
+      'video/quicktime' => '',
+      'video/vnd.mpegurl' => '',
+      'video/webm' => '',
+      'video/x-flv' => '',
+      'video/x-la-asf' => '',
+      'video/x-m4v' => '',
+      'video/x-matroska' => '',
+      'video/x-mng' => '',
+      'video/x-ms-asf' => '',
+      'video/x-ms-wm' => '',
+      'video/x-ms-wmv' => '',
+      'video/x-ms-wmx' => '',
+      'video/x-ms-wvx' => '',
+      'video/x-msvideo' => '',
+      'video/x-sgi-movie' => '',
+      'x-conference/x-cooltalk' => '',
+      'x-epoc/x-sisx-app' => '',
+      'x-world/x-vrml' => '',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'fa-file-excel-o',
+  );
+  if(array_key_exists ($mime_type, $entre)){
+    return $entre[$mime_type];
+  }
+  return "caca";
+}
+
+function sitemap_actualiser_calendrier(&$node, &$old_node = null){
+  if($node->type == 'calendrier_feed'){
+    $emw_node = entity_metadata_wrapper('node', $node);
+    $lien_feed = $emw_node->field_ical_feed_link->value();
+    if($old_node){
+      $emw_old_node = $emw_node = entity_metadata_wrapper('node', $old_node);
+      $old_lien_feed = $emw_node->field_ical_feed_link->value();
+    }else{
+      $emw_old_node = false;
+      $old_lien_feed = false;
+    }
+    if(!$old_lien_feed && $lien_feed){
+      $feeds_importer_id = PREFIXE_NOM_FEED_CALENDRIER . $node->nid;
+      $feeds_importer = feeds_importer($feeds_importer_id);
+      $config = array(
+        'name' => $feeds_importer_id,
+        'description' => 'importe les emails d une boite courriel',
+        'fetcher' => array(
+          'plugin_key' => 'FeedsHTTPFetcher',
+          'config' => array(
+            'auto_detect_feeds' => FALSE,
+            'use_pubsubhubbub' => FALSE,
+            'designated_hub' => '',
+            'request_timeout' => NULL,
+            'auto_scheme' => 'http',
+            'accept_invalid_cert' => FALSE,
+          ),
+        ),
+        'parser' => array(
+          'plugin_key' => 'DateiCalFeedsParser',
+          'config' => array(
+            'indefinite_count' => '52',
+            'indefinite_message_display' => TRUE,
+            'until_not_utc' => FALSE,
+            'skip_days' => NULL,
+          ),
+        ),
+        'processor' => array(
+          'plugin_key' => 'FeedsNodeProcessor',
+          'config' => array(
+            'expire' => '-1',
+            'author' => 0,
+            'authorize' => 0,
+            'mappings' => array(
+              0 => array(
+                'source' => 'UID',
+                'target' => 'guid',
+                'unique' => 1,
+                'language' => 'und',
+              ),
+              1 => array(
+                'source' => 'SUMMARY',
+                'target' => 'title',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              2 => array(
+                'source' => 'DTSTART',
+                'target' => 'field_event_date:start',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              3 => array(
+                'source' => 'DTEND',
+                'target' => 'field_event_date:end',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              4 => array(
+                'source' => 'RRULE',
+                'target' => 'field_event_date:rrule',
+                'unique' => FALSE,
+                'language' => 'und',
+              ),
+              5 => array(
+                'source' => 'Blank source 2',
+                'target' => 'field_activity_type',
+                'term_search' => '1',
+                'autocreate' => 0,
+                'language' => 'und',
+              ),
+              6 => array(
+                'source' => 'Blank source 6',
+                'target' => 'field_rendre_enfant_de_sitemap:etid',
+                'unique' => FALSE,
+              ),
+            ),
+            'update_existing' => '1',
+            'input_format' => 'full_html',
+            'skip_hash_check' => 1,
+            'bundle' => 'event',
+            'insert_new' => '1',
+            'update_non_existent' => 'delete',
+            'language' => 'und',
+          ),
+        ),
+        'content_type' => '',
+        'update' => 0,
+        'import_period' => '3600',
+        'expire_period' => 3600,
+        'import_on_create' => 1,
+        'process_in_background' => 0,
+      );
+      $feeds_importer->setConfig($config);
+      foreach (array('fetcher', 'parser', 'processor') as $type) {
+        $config_avant = $config[$type]['config'];
+        $feeds_importer->setPlugin($feeds_importer->config[$type]['plugin_key']);
+        $feeds_importer->$type->setConfig($config_avant);
+      }
+      $feeds_importer->save();
+      $new_instance = feeds_tamper_new_instance();
+      $new_instance->description = "met une reference a une entite";
+      $new_instance->disabled = FALSE;
+      $new_instance->api_version = 2;
+      $new_instance->id = $feeds_importer_id . '-blank_source_6-default_value';
+      $new_instance->importer = $feeds_importer_id;
+      $new_instance->source = 'Blank source 6';
+      $new_instance->plugin_id = 'default_value';
+      $new_instance->settings = array(
+        'default_value' => $node->nid,
+        'only_if_empty' => 0,
+      );
+      $new_instance->weight = 0;
+      feeds_tamper_save_instance($new_instance);
+      $emw_node->field_feed = $feeds_importer_id;
+      $emw_node->save();
+
+      $source = feeds_source($feeds_importer_id);
+
+
+      $config_url_http = array();
+      $config_url_http['FeedsHTTPFetcher']['source'] = $lien_feed;
+
+      $source->addConfig($config_url_http);
+      $source->save();
+    }
+  }
+}
+
+/**
+ * pas testé encore
+ * @param unknown $champs
+ * @param unknown $valeur
+ * @return boolean
+ */
+function sitemap_if_entity_reference_node_contains($champs, $valeur) {
+  $trouve = false;
+  foreach($champs as $cle => $val) {
+    if($val['target_id'] == $valeur){
+      $trouve = true;
+    }
+  }
+  return $trouve;
+}
+
+function sitemap_array_equal($a, $b) {
+    return (
+         is_array($a) && is_array($b) &&
+         count($a) == count($b) &&
+         array_diff($a, $b) === array_diff($b, $a)
+    );
+}
+
+function sitemap_reconstruire_menu(&$node, $reconstruire_tout = false, &$parent = null){
+  $les_referents = array();
+  $change = false;
+  if($node->type != "conteneur" && field_info_instance('node', "field_racine_d_un_menu_", $node->type)              //si est racine du menu
+      && field_info_instance('node', "field_racine_menu_a_afficher", $node->type)     //racine du menu
+      && field_info_instance('node', "field_referencer_par_menu_parent", $node->type) //si visible dans menu parent
+      && field_info_instance('node', "field_menus_referents", $node->type)            //référents
+  ){
+    //on veut toutes les valeurs du noeud mais on veut aussi
+    //les valeures suivantes du doeud parent: si est racine, menuRacineAfficher
+
+    $noeud_est_reference_dans_parent = false; // booleen
+    $noeud_racine_du_menu = false;            // nid
+    $noeud_est_racine = false;                // booleen
+    $noeud_referents = array();               // nid[]
+
+    $parent_est_racine = false;// booleen
+    $parent_racine_du_menu = false;           // nid
+    $les_referents = array();
+    $change = false;
+
+    if(!$parent){
+      $parent = sitemap_get_noeud_parent($node);
+    }
+
+    if($parent){
+      $titre_parent = $parent->title;
+    }
+
+    //pour le débuger
+    $titre = $node->title;
+    $nid = $node->nid;
+
+    //prégénérer $noeud_est_racine
+    if(isset($node->field_racine_d_un_menu_['und'][0]['value'])
+        && $node->field_racine_d_un_menu_['und'][0]['value'] == 1){
+      $noeud_est_racine = true;
+    }
+
+    //prégénérer $noeud_racine_du_menu
+    if(isset($node->field_racine_menu_a_afficher['und'][0]['target_id'])){
+      $noeud_racine_du_menu = $node->field_racine_menu_a_afficher['und'][0]['target_id'];
+    }
+
+    //prégénérer $noeud_est_reference_dans_parent
+    if(isset($node->field_referencer_par_menu_parent['und'][0]['value'])
+        && $node->field_referencer_par_menu_parent['und'][0]['value'] == 1){
+      $noeud_est_reference_dans_parent = true;
+    }
+
+    //$referents_du_noeud
+    foreach(field_get_items('node', $node, "field_menus_referents") as $referent){
+      $noeud_referents[] = $referent['target_id'];
+    }
+
+
+    if($parent != null){
+
+      //prégénérer $noeud_est_racine
+      if(isset($parent->field_racine_d_un_menu_['und'][0]['value'])
+          && $parent->field_racine_d_un_menu_['und'][0]['value'] == 1){
+        $parent_est_racine = true;
+      }
+
+      //prégénérer $noeud_racine_du_menu
+      if(isset($parent->field_racine_menu_a_afficher['und'][0]['target_id'])){
+        $parent_racine_du_menu = $parent->field_racine_menu_a_afficher['und'][0]['target_id'];
+      }
+    }
+
+    if($parent){
+      if($noeud_est_racine){
+        $racine_du_menu = $node->nid;
+      }else if($parent_est_racine) {
+        $racine_du_menu = $parent->nid;
+      }else{
+        $racine_du_menu = $parent_racine_du_menu;
+      }
+      $les_referents[] = $racine_du_menu;
+
+      if($noeud_est_racine && $noeud_est_reference_dans_parent){
+        if($parent_est_racine){
+          $les_referents[] = $parent->nid;
+        }else{
+          $les_referents[] = $parent_racine_du_menu;
+        }
+      }
+    }else{
+      $racine_du_menu = $node->nid;
+      $les_referents[] = $node->nid;
+    }
+
+    if($noeud_racine_du_menu != $racine_du_menu){
+      $node->field_racine_menu_a_afficher['und'][0]['target_id'] = $racine_du_menu;
+      $change = true;
+    }
+    if(!sitemap_array_equal($noeud_referents, $les_referents)){
+      $node->field_menus_referents['und'] = array();
+      foreach($les_referents as $elem){
+        $node->field_menus_referents['und'][]['target_id'] = $elem;
+      }
+      $change = true;
+    }
+
+  	if($change){
+  		node_save($node);
+  	}
+    foreach(sitemap_get_noeuds_enfants($node) as $enfant){
+      if($enfant->type != "conteneur"){
+        $titre_enfant = $enfant->title;
+        if($reconstruire_tout || (!isset($enfant->field_racine_d_un_menu_['und'][0]['value'])
+            || ($enfant->field_racine_d_un_menu_['und'][0]['value'] == 0))
+        ){
+    			sitemap_reconstruire_menu($enfant, $reconstruire_tout, $node);
+    		}
+      }
+    }
+  }
+}
+
+/**
+* Implementation of hook_rules_event_info().
+* ajoute la règle de traitement post insert ou post modif (après le commit)
+*/
+function sitemap_rules_event_info() {
+  return array(
+    'sitemap_test_event' => array(
+      'label' => t('Sitemap update on node is ended'),
+      'module' => 'sitemap',
+      'variables' => array(
+        'node' => array('type' => 'node', 'label' => t('The node treated by sitemap')),
+        'old_node' => array('type' => 'node', 'label' => t('The node before the sitemap treatement')),
+      ),
+      'access callback' => 'rules_node_integration_access',
+    ),
+    'sitemap_insert_saved' => array(
+      'label' => t('Sitemap insert node is saved'),
+      'module' => 'sitemap',
+      'variables' => array(
+        'node' => array('type' => 'node', 'label' => t('The node treated by sitemap')),
+      ),
+      'access callback' => 'rules_node_integration_access',
+    ),
+    'sitemap_delete' => array(
+      'label' => t('Sitemap insert node is saved'),
+      'module' => 'sitemap',
+      'variables' => array(
+        'node' => array('type' => 'node', 'label' => t('The node dealeted in sitemap')),
+      ),
+      'access callback' => 'rules_node_integration_access',
+    ),
+  );
+}
+
+
+/**
+ * global initiateur du post traitement par appel différé de fonction afin
+ * d'éxécuter le code de cette dernière fonction hors d'un suspend de commit
+ * afin d'éxécuter complètement les commits de node créate lors de l'éxécution de la fonction
+ * @param noeud $node
+ */
+function sitemap_node_update($node) {
+  global $sitemap_processus;
+  if( isset($node->form_build_id)
+      && isset($sitemap_processus['sitemap_node_update']['status'][$node->form_build_id])
+      && $sitemap_processus['sitemap_node_update']['status'][$node->form_build_id]
+      ) {
+    watchdog('sitemap', 'entrée dans sitemap_node_update');
+    $sitemap_processus['sitemap_node_update']['status'][$node->form_build_id] = false;
+    $old_node = node_load($node->nid);
+    drupal_register_shutdown_function('_modifier_sitemap', $node->nid, $old_node);
+    watchdog('sitemap', 'sortie de sitemap_node_update');
+  }
+}
+
+
+/**
+ * Altération du formulaire de gestion ddes bundle afin de pouvoir associer à un bundle des variables de configuration
+ * servant à indiquer si ce bundle est une page
+ * @param formulaire $form
+ * @param form state $form_state
+ */
+function sitemap_form_node_type_form_alter(&$form, &$form_state) {
+  $node_type = $form['#node_type']->type;
+
+  $form['sitemap'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Sitemap hiérarchie'),
+    '#collapsible' => TRUE,
+    '#group' => 'additional_settings',
+    '#description' => t('Spécifie le rôle du type de contenu dans la hiérarchie sitemap.'),
+  );
+  $form['sitemap']['est_page'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Est une page'),
+    '#default_value' => variable_get('est_page_' . $node_type, FALSE),
+    '#description' => "ce champ sert à indiquer si ce type de contenu est une page",
+    '#disabled' => 0,
+  );
+  $form['conteneur'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Conteneurs'),
+    '#collapsible' => TRUE,
+    '#group' => 'additional_settings',
+    '#description' => t('Spécifie les actions relative aux conteneurs'),
+  );
+  $form['conteneur']['conteneur_supprimer'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Suprimer contenu si son conteneur aussi.'),
+    '#default_value' => variable_get('conteneur_supprimer_' . $node_type, FALSE),
+    '#description' => "Si le conteneur dans le quel ce contenu est est supprimé, ce contenu le sera aussi.",
+    '#disabled' => 0,
+  );
+  $form['conteneur']['conteneur_supprimer_deplacer_parent'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Déplacer le contenu vers le conteneur parent si conteneur supprimé'),
+    '#default_value' => variable_get('conteneur_supprimer_deplacer_parent_' . $node_type, FALSE),
+    '#description' => "Si le conteneur dans le quel ce contenu est est supprimé, ce contenu sera déplacé vers le parent",
+    '#disabled' => 0,
+  );
+}
+
+
+function sitemap_permission() {
+  return array(
+    'modifier hierarchie' => array(
+      'title' => t('Administrer l ordre de la hiérarchie'),
+      'description' => t('Permet d accéder à la page de modd de la hiérarchie'),
+    ),
+  );
+}
+
+function sitemap_og_permission(){
+  $perm = array();
+  $perm['modifier l ordre des pages'] = array(
+    'title' => "Administrer l'ordre des pages",
+    'description' => "Permet de modifier l'ordre des pages via une page",
+    'roles' => array(OG_ANONYMOUS_ROLE, OG_AUTHENTICATED_ROLE),
+    'default role' => array(
+      OG_ANONYMOUS_ROLE,
+      OG_AUTHENTICATED_ROLE,
+      OG_ADMINISTRATOR_ROLE,
+    ),
+    'module' => "sitemap",
+  );
+  $perm['modifier l ordre des contenus'] = array(
+    'title' => "Administrer l'ordre des contenus",
+    'description' => "Permet de modifier l'ordre des contenus via une page",
+    'roles' => array(OG_ANONYMOUS_ROLE, OG_AUTHENTICATED_ROLE),
+    'default role' => array(
+      OG_ANONYMOUS_ROLE,
+      OG_AUTHENTICATED_ROLE,
+      OG_ADMINISTRATOR_ROLE,
+    ),
+    'module' => "sitemap",
+  );
+  return $perm;
+}
+
+/*
+ * partie du formulaire modifier toute hierarchie
+ */
+
+function sitemap_menu() {
+  $items['admin/sitemap/hierarchy/%node'] = array(
+    'title' => 'Customize menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('sitemap_hierarchy_form', 3),
+    'title callback' => 'sitemap_hierarchy_title',
+    'title arguments' => array(3),
+    'access callback' => 'sitemap_og_groupe_controleur_access',
+    'access arguments' => array('modifier l ordre des pages', "node", 3),
+  );
+
+  $items['admin/sitemap/hierarchy/%node/contenu'] = array(
+    'title' => 'Customize menu',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('sitemap_hierarchy_form', 3),
+    'title callback' => 'sitemap_hierarchy_title',
+    'title arguments' => array(3),
+    'access callback' => 'sitemap_og_groupe_controleur_access',
+    'access arguments' => array('modifier l ordre des contenus', "node", 3),
+  );
+  return $items;
+}
+
+function sitemap_og_groupe_controleur_access($perm, $entity_type, $entity){
+  if(($groupe_controlant = sitemap_get_groupe_controlant($entity))
+      || ($groupe_controlant = sitemap_get_first_group_controleur($entity))){
+    $og_access = og_user_access("node", $groupe_controlant->nid, $perm);
+    return $og_access;
+  }
+  return false;
+}
+
+function sitemap_get_contenu_refere($noeud, $champ_reference) {
+  if(sitemap_get_champ_si_existe($noeud, $champ_reference)
+          && ($field_maillage = field_get_items('node', $noeud, $champ_reference))
+          && ($contenu_refere = node_load($field_maillage[0]['target_id']))) {
+    return $contenu_refere;
+  }else{
+    return false;
+  }
+}
+
+function sitemap_ajouter_enfant_au_form(&$form, $node, $deept = 0, $filtre = "page") {
+  foreach(sitemap_get_noeuds_enfants($node) as $enfant) { //les trier d'Abbord selon le poid
+    if(isset($enfant->field_noeud_parent_sitemap['und'][0]['target_id'])
+        && isset($enfant->field_terme_parent_sitemap['und'][0]['tid'])
+        && isset($node->field_terme_parent_sitemap['und'][0]['tid'])
+        && (($filtre == "page" && variable_get('est_page_' . $enfant->type, FALSE))
+            || ($filtre == "contenu" && !variable_get('est_page_' . $enfant->type, FALSE)))
+        ){
+      $prefixe = "nid:" . $enfant->nid;
+      $form['#tree'] = true; //permet le nesting
+      $form[$prefixe]["#item"] = $enfant;
+      $form[$prefixe]['#deept'] = $deept;
+      $form[$prefixe]["#tree_item"] = true;
+
+      if($enfant->type == "maillon_contenu"
+          && ($contenu_maille = sitemap_get_contenu_refere($enfant, "field_contenu_refere"))) {
+        $titre = $contenu_maille->title;
+      }else {
+        $titre = $enfant->title;
+      }
+
+      $titre_supprimer = "";
+      if($enfant->type == "maillon_contenu") {
+        $titre_supprimer = "retirer";
+      }else {
+        $titre_supprimer = "supprimer";
+      }
+      $destination = "";
+      if(isset($_GET['destination'])) {
+        $destination = $_GET['destination'];
+      }
+      $url = url('node/' . $enfant->nid . '/delete', array('absolute' => TRUE));
+      $lien = l($titre_supprimer, $url, array(
+          'attributes' => array('class' => array('btn', 'btn-danger')),
+          'query' => array('destination' => $destination),
+       ));
+
+      $url = url('node/' . $enfant->nid . '/edit', array('absolute' => TRUE));
+      $lien2 = l("modifier", $url, array(
+          'attributes' => array('class' => array('btn', 'btn-danger')),
+          'query' => array('destination' => $destination),
+       ));
+
+      $form[$prefixe]['lien'] = array(
+        '#markup' => $lien,
+      );
+
+      $form[$prefixe]['lien2'] = array(
+        '#markup' => $lien2,
+      );
+
+      $form[$prefixe]['title'] = array(
+        '#markup' => $titre,
+      );
+      $form[$prefixe]['bundle'] = array(
+        '#markup' => $enfant->type,
+      );
+      $form[$prefixe]['nid'] = array(
+        '#type' => 'hidden',
+        '#default_value' => $enfant->nid,
+        '#tree' => true,
+      );
+      $form[$prefixe]['pnid'] = array(
+        '#type' => 'hidden',
+        '#default_value' => $enfant->field_noeud_parent_sitemap['und'][0]['target_id'],
+        '#tree' => true,
+      );
+      $form[$prefixe]['tid'] = array(
+        '#type' => 'hidden',
+        '#default_value' => $enfant->field_terme_parent_sitemap['und'][0]['tid'],
+        '#tree' => true,
+      );
+      $form[$prefixe]['weight'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Weight'),
+        '#size' => 6,
+        '#default_value' => taxonomy_term_load($enfant->field_terme_parent_sitemap['und'][0]['tid'])->weight,
+        '#description' => t('Terms are displayed in ascending order by weight.'),
+        '#required' => TRUE,
+      );
+      sitemap_ajouter_enfant_au_form($form, $enfant, $deept+1, $filtre);
+    }
+  }
+}
+
+function sitemap_hierarchy_form($form, &$form_state, $node) {
+  $filtre = arg(4);
+  if(arg(4) == "contenu") {
+    $filtre = arg(4);
+  }else {
+    $filtre = "page";
+  }
+  $form['description'] = array(
+    '#type' => 'item',
+    '#title' => t('A simple form with a submit button'),
+  );
+  $form['nid'] = array(
+   '#type' => 'hidden',
+   '#value' => $node->nid,
+   '#tree' => false,
+  );
+  $form['name'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Name'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#tree' => false,
+  );
+  $form['name']['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Title'),
+    '#required' => TRUE,
+    '#default_value' => $node->title,
+    '#description' => "Please enter the title of node",
+    '#size' => 60,
+    '#maxlength' => 60,
+    '#tree' => false,
+  );
+
+  sitemap_ajouter_enfant_au_form($form, $node, 0, $filtre);
+
+  $form['actions'] = array('#type' => 'actions');
+    $form['actions']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Save configuration'),
+    );
+  $form['actions']['submit']['#submit'][] = 'sitemap_hierarchy_form_submit';
+  return $form;
+}
+
+function theme_sitemap_hierarchy_form($variables) {
+  $form = $variables['form'];
+  drupal_add_tabledrag('sitemap-mod-g', 'match', 'parent', 'sitemap-pnid', 'sitemap-pnid', 'sitemap-nid', false);
+  drupal_add_tabledrag('sitemap-mod-g', 'order', 'sibling', 'sitemap-weight');
+  $rows = array();
+  foreach (element_children($form) as $nidkey) {
+    $element = &$form[$nidkey];
+    $element['nid']['#attributes']['class'] = array('sitemap-nid');
+    $element['pnid']['#attributes']['class'] = array('sitemap-pnid');
+    $element['weight']['#attributes']['class'] = array('sitemap-weight');
+    if(isset($element['#tree_item']) && $element['#tree_item'] == true){
+      $row = array();
+      $row[] = theme('indentation', array('size' => $element['#deept'])) . drupal_render($element['title']);
+      $row[] = drupal_render($element['bundle']);
+      $row[] = drupal_render($element['lien']);
+      $row[] = drupal_render($element['lien2']);
+      $row[] = drupal_render($element['nid']) . drupal_render($element['pnid']) . drupal_render($element['tid']) . drupal_render($element['weight']);
+      $row = array_merge(array('data' => $row), $element['#attributes']);
+      $row['class'][] = 'draggable';
+      $rows[] = $row;
+    }
+  }
+  $header = array(
+    t('titre'),
+    array('data' => t('bundle')),
+    t('opération'),
+    t('modifier'),
+    t('Poid'),
+
+  );
+  $output = "";
+  $output .= drupal_render($form['description']);
+  $output .= drupal_render($form['name']);
+  $output .= theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'sitemap-mod-g')));
+  $output .= drupal_render_children($form); //drupal_render($form['actions']);
+
+  return $output;
+}
+
+function sitemap_theme() {
+  return array(
+    'sitemap_hierarchy_form' => array(
+      'render element' => 'form',
+    ),
+  );
+}
+
+function sitemap_get_and_remove_childred_adjancence(&$adjacence, $trouver){
+  $retour = array();
+  foreach($adjacence as $nid => $parent_nid) {
+    if($parent_nid == $trouver){
+      unset($adjacence[$nid]);
+      $retour[] = $nid;
+    }
+  }
+  return $retour;
+}
+
+
+function sitemap_parcours_adjacence($adjacence, $racine, &$parcours = array()) {
+  $retour = array();
+  $niveau = array();
+  foreach(sitemap_get_and_remove_childred_adjancence($adjacence, $racine) as $cle => $val) {
+    //drupal_set_message("val=" . $val);
+    $parcours[] = $val;
+    sitemap_parcours_adjacence($adjacence, $val, $parcours);
+  }
+  return $parcours;
+}
+
+function sitemap_hierarchy_form_submit($form, &$form_state) {
+
+  drupal_register_shutdown_function('_submit_sitemap_form_hierarchy', $form, $form_state);
+}
+
+function sitemap_save_recursive_term_list($tableu_des_termes){
+  foreach($tableu_des_termes as $cle => $terme){
+    $parent_init = $terme->parent;
+    $weight_init = $terme->weight;
+    $terme->parent = 316;
+    taxonomy_term_save($terme);
+    $terme->parent = $parent_init;
+    $terme->weight = $weight_init;
+  }
+  foreach($tableu_des_termes as $cle => $terme){
+    taxonomy_term_save($terme);
+  }
+}
+
+function sitemap_operation_only_herited_group_controleur(&$node, $function_operation, $groupe_enlever = false){
+  if($groupe_controlant = sitemap_get_groupe_controlant($node)){
+  }else if(
+      ($groupe_controlant = $groupe_enlever)
+      || ($groupe_controlant = sitemap_get_first_group_controleur($node))
+  ){
+    $function_operation($node, $groupe_controlant);
+  }
+  //parcour des enfants et appel réccursif
+  foreach(sitemap_get_noeuds_enfants($node) as $key => $enfant) {
+    sitemap_operation_only_herited_group_controleur($enfant, $function_operation, $groupe_controlant);
+  }
+}
+
+function _submit_sitemap_form_hierarchy($form, $form_state) {
+  $nidParent = $form['nid']['#value'];
+  $traitement = array();
+  $tableu_des_termes = array();
+
+  $noeud_racine = node_load($nidParent);
+
+  //enlever la scrapp dans le systeme
+  if($noeud_racine){
+    sitemap_operation_only_herited_group_controleur($noeud_racine, 'sitemap_unset_node_children_of_group');
+  }
+
+
+  foreach (element_children($form) as $cleNoeud) {
+    if (isset($form[$cleNoeud]['#item'])) {
+      $item = &$form[$cleNoeud];
+      if(isset($item['nid']['#value'])
+          && isset($item['pnid']['#value'])
+          && isset($item['tid']['#value'])
+      ){
+        $old_adj[$item['nid']['#value']] = $item['pnid']['#default_value'];
+        $nouv_adj[$item['nid']['#value']] = $item['pnid']['#value'];
+
+        if($item['pnid']['#value'] != $item['pnid']['#default_value']
+            || $item['weight']['#value'] != $item['weight']['#default_value']) {
+          if( ($node = node_load($item['nid']['#value']))
+              && ($terme = sitemap_get_terme_associe($node))
+              && ($noeud_parent = node_load($item['pnid']['#value']))
+              && ($terme_parent = sitemap_get_terme_associe($noeud_parent))
+              ){
+            $nid_trait = $item['nid']['#value'];
+            $old_node = $node;
+
+            $terme->parent = $terme_parent->tid;
+            drupal_set_message("poid!important=" . $terme->weight . "autre=" . $item['weight']['#value']);
+            $terme->weight = $item['weight']['#value'];
+            $tableu_des_termes[] = $terme;
+
+            $node->field_noeud_parent_sitemap['und'][0]['target_id'] = $item['pnid']['#value'];
+
+            if($item['pnid']['#value'] != $item['pnid']['#default_value']){ //seulemtn pour changement de hiérarchie
+              $traitement[$nid_trait]['node'] = $node;
+              $traitement[$nid_trait]['item'] = $item;
+              $traitement[$nid_trait]['old_node'] = $node;
+              //avoir old group
+            }
+            node_save($node);
+          }
+        }
+      }
+    }
+  }
+  sitemap_save_recursive_term_list($tableu_des_termes);
+
+  foreach(($test = sitemap_parcours_adjacence($nouv_adj, $nidParent)) as $cle => $val) {
+    if(array_key_exists($val, $traitement)){
+      $node = $traitement[$val]['node'];
+      $old_node = $traitement[$val]['old_node'];
+
+      sitemap_actualiser_statut_archivage($node);
+      sitemap_ajouter_conteneurs($node);
+      sitemap_actualiser_maillons($node);
+      node_save($node);
+      //rules_invoke_event_by_args('sitemap_test_event', array('node' => $node, 'old_node' => $old_node));
+    }
+  }
+  if($node = node_load($nidParent)){
+    sitemap_reconstruire_menu($node, true);
+  }
+
+  // actualiser ensuite l'héritage des possesions des groupes
+  if($noeud_racine){
+    sitemap_operation_only_herited_group_controleur($noeud_racine, 'sitemap_set_node_children_of_group');
+  }
+  //actualiser les liens hiérarchiques....
+  sitemap_actualiser_hierarchie_groupes_controleurs($node, null, true);
+}
+
+function sitemap_hierarchy_title($node) {
+    return "modifier sitemap de: " . $node->title;
+}
+
+
+
+/*function sitemap_init() {
+  if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+    // Is an AJAX request...
+  }
+  else {
+    $_SESSION['sitemap_curent_url'] = $_GET['q'];
+  }
+}*/
+
+function sitemap_boot() {
+  $result = preg_match("#^js/admin_menu/(.*)$#i", $_GET['q']);
+  if($_GET['q'] != "views/ajax" && $result == 0) {
+    $_SESSION['sitemap_curent_url'] = $_GET['q'];
+  }
+}
+

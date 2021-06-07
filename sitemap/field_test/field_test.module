@@ -1,0 +1,468 @@
+<?php
+function field_test_field_widget_info() {
+  return array(
+    'entityreference_contact_selector' => array(
+      'label' => t('Contact selector'),
+      'field types' => array('entityreference'),
+      'settings' => array(
+        'view_mode' => 'title',
+        'available_entities_label' => t('Available entities'),
+        'selected_entities_label' => t('Selected entities'),
+        'display_filter' => 0,
+      ),
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_CUSTOM,
+      ),
+    ),
+  );
+}
+
+function field_test_build_children_html($elements){
+  $html = "<ul>";
+  if($elements){
+    foreach($elements as $nid => $data){
+      $html .= field_test_build_elem_ariane_html($nid);
+      /*if($node = node_load($nid)){
+        $html .= '<li data-nid="' . $node->nid . '">' . $node->title . '</li>';
+      }*/
+    }
+  }
+  $html .= "</ul>";
+  return $html;
+}
+
+function field_test_build_elem_ariane_html($nid){
+  $html = "";
+  if($node = node_load($nid)){
+    $html .= '<li data-nid="' . $node->nid . '">' . $node->title . '</li>';
+  }
+  return $html;
+}
+
+function field_test_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element, $test = 0) {
+  $first_load = (
+      isset($form_state['values_name_field_test_after_build'][$instance['field_name']])
+      && isset($form_state['values_name_field_test_after_build'][$instance['field_name']]['load_req'])
+  );
+  if($first_load || !$first_load){
+    // If we have more than one element per page,
+    // this element-counter keeps them separated.
+    $ec = &drupal_static(__FUNCTION__, 0);
+
+    $handler = entityreference_get_selection_handler($field, $instance);
+    $options = $handler->getReferencableEntities();
+
+    $selected = field_test_get_selected_options($items, $options);
+    $markup_selected = field_test_build_html($selected, $field, $instance, $ec, array('entityreference-dragdrop-selected'));
+
+    $label = '<div class="entityreference-dragdrop-label">' . $instance['label'] . '</div>';
+    $message = $field['cardinality'] == -1 ? '' : '<div class="entityreference-dragdrop-message" data-ec="' . $ec . '">' . t("This field cannot hold more than @card values.", array('@card' => $field['cardinality'])) . '</div>';
+
+    $filter_1 = $filter_2 = array();
+    if ($instance['widget']['settings']['display_filter']) {
+      $filter_1 = $filter_2 = array(
+        '#type' => 'textfield',
+        '#attributes' => array(
+          'class' => array('entityreference-dragdrop-filter'),
+        ),
+      );
+    }
+
+    $html_1 = '<div class="entityreference-dragdrop-container entityreference-dragdrop-container-available">';
+    $html_1 .= '<div data-bundle="' . $instance['bundle'] . '"></div>';
+    $html_1 .= '<div data-field_name="' . $instance['field_name'] . '"></div>';
+    $html_1 .= '<div data-ec-var="' . $ec . '"></div>';
+    $html_1 .= '<div class="entityreference-dragdrop-navigation">';
+    $html_1 .= '<div class="entityreference-dragdrop-navigation-enfants">';
+    $html_1 .= '<div class="enfants-markup-remp"></div>';
+    $html_1 .= '</div>';
+    $html_1 .= '</div>';
+    $html_1 .= '<div class="entityreference-dragdrop-list-header">';
+    $html_1 .=  $instance['widget']['settings']['available_entities_label'];
+    $html_1 .= '</div>';
+    $html_1 .= drupal_render($filter_1);
+    $html_1 .= '<div class="avaliable-remp"></div>';
+    $html_1 .= '</div>';
+
+    $html_2 = '<div class="entityreference-dragdrop-container entityreference-dragdrop-container-selected">';
+    $html_2 .= '<div class="entityreference-dragdrop-list-header">';
+    $html_2 .= $instance['widget']['settings']['selected_entities_label'];
+    $html_2 .= '</div>';
+    $html_2 .= drupal_render($filter_2);
+    $html_2 .= $markup_selected;
+    $html_2 .= '</div>';
+
+    $element += array(
+      '#type' => 'hidden',
+      '#default_value' => implode(',', array_keys($selected)),
+      '#element_validate' => array('entityreference_dragdrop_element_validate'),
+      '#suffix' => $label . '<div class="entityreference-dragdrop-widget-wrapper">'
+        . $html_1 . $html_2 . '</div>' . $message . '<div class="entityreference-dragdrop-clear"></div>',
+      '#attached' => array(
+        'js' => array(
+          drupal_get_path('module', 'field_test') . '/field_test.js',
+          array(
+            'data' => array(
+              'entityreference_dragdrop' => array(
+                $ec => $field['cardinality'],
+              ),
+            ),
+            'type' => 'setting',
+          ),
+        ),
+        'css' => array(drupal_get_path('module', 'field_test') . '/field_test.css'),
+        'library' => array(array('system', 'ui.sortable')),
+      ),
+      '#attributes' => array(
+        'class' => array('entityreference-dragdrop-values'),
+        'data-ec' => array($ec),
+      ),
+    );
+
+    // Increment the element-counter
+    $ec++;
+    $form['#after_build'][] = "field_test_after_build_callback";
+    $form_state['values_name_field_test_after_build'][$instance['field_name']] = array();
+  }else{
+
+
+  }
+  return $element;
+}
+
+/*
+  get_groupe_parent_du_groupe
+  get_groupe_enfants_du_groupe
+*/
+
+
+function field_test_get_tree_markup($groupe_init_nid, $groupe_req_nid){
+    $enfants_markups = "";
+    if(
+        ($groupe_req = node_load($groupe_req_nid))
+        && ($groupe_init = node_load($groupe_init_nid))
+    ){
+      //$groupe_init = node_load($groupe_init_nid);
+
+      $markup_controlant = "";
+
+
+      $tableau_des_parents_init = array();
+      $tableau_des_parents = array();
+      get_group_upper_branch($groupe_init, $tableau_des_parents_init);
+      $tableau_des_parents_init = array_reverse($tableau_des_parents_init);
+      if($groupe_init->nid == $groupe_req->nid){
+        $tableau_des_parents = $tableau_des_parents_init;
+      }else{
+        get_group_upper_branch($groupe_req, $tableau_des_parents);
+        $tableau_des_parents = array_reverse($tableau_des_parents);
+      }
+
+      if(count($tableau_des_parents) >= count($tableau_des_parents_init) ){
+        $listes_enfants = get_groupe_enfants_du_groupe($groupe_req);
+        $enfants_markups = field_test_build_children_html($listes_enfants);
+      }else{
+        $tableau_des_parents_init_maj = $tableau_des_parents_init;
+        $tableau_des_parents_init_maj[] = array("noeud" => $groupe_init);
+        $elem_selected = $tableau_des_parents_init_maj[count($tableau_des_parents)+1]["noeud"];
+        //field_test_build_elem_ariane_html
+        $enfants_markups = '<ul>' . field_test_build_elem_ariane_html($elem_selected->nid) . '</ul>';
+
+      }
+
+
+
+      $fil_dariane = array();
+      foreach($tableau_des_parents as $cle => $data){
+        $fil_dariane[] = '<span data-nid="' . $data['noeud']->nid . '">' . $data['noeud']->title . '</span>';
+      }
+      $fil_dariane[] = '<span data-nid="' . $groupe_req->nid . '">' . $groupe_req->title . '<span>';
+      $fil_dariane = '<div class="fil-ariane">' . implode("=>", $fil_dariane) . '</div>';
+      $enfants_markups = $fil_dariane . $enfants_markups;
+
+      $markup_controlant .= '<div data-nid-init="' . $groupe_init->nid . '"></div>';
+      $enfants_markups = $markup_controlant . $enfants_markups;
+
+    }
+    return $enfants_markups;
+}
+
+function field_test_menu(){
+  $items = array();
+
+  $items['filariane/init/%/req/%'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'field_test_get_tree_markup',
+    'page arguments' => array(2,4),
+    'access callback' => TRUE,
+    'delivery callback' => 'drupal_json_output',
+  );
+
+  //function blablabla($name_file, $node_type, $ec, $nid_req, $nid_init)
+
+  $items['ajax/field_test/%/%/%/idReq/%/init/%'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'blablabla',
+    'page arguments' => array(3, 2, 4, 6, 8),
+    'access callback' => TRUE,
+    'delivery callback' => 'drupal_json_output',
+  );
+  return $items;
+}
+
+function blablabla($name_file, $node_type, $ec, $nid_req, $nid_init){
+
+  $groupe_req = node_load($nid_req);
+  $est_en_haut = false;
+  if(($groupe_init = node_load($nid_init))){
+      $tableau_des_parents_initial = array();
+      get_group_upper_branch($groupe_init, $tableau_des_parents_initial);
+      foreach($tableau_des_parents_initial as $cle => $data){
+        if($data["noeud"]->nid == $nid_req){
+          $est_en_haut = true;
+          break;
+        }
+      }
+  }
+
+  $field = field_info_field($name_file);
+  $instance = field_info_instance("node", $name_file, $node_type);
+
+  $available = field_test_available_options($groupe_req, $est_en_haut);
+
+  $markup_available = field_test_build_html($available, $field, $instance, $ec, array('entityreference-dragdrop-available'));
+  return $markup_available;
+}
+
+function field_test_after_build_callback($form, &$form_state){
+  foreach($form_state['values_name_field_test_after_build'] as $name_file => $val){
+    $form_state['values_name_field_test_after_build'][$name_file]['load_req'] = true;
+
+
+    $ec = &drupal_static(__FUNCTION__, 0);
+
+    $langcode = "und";
+    if(
+        isset($form_state['values'])
+        && isset($form_state['values']['field_noeud_parent_sitemap'])
+        && isset($form_state['values']['field_noeud_parent_sitemap'][$langcode])
+        && isset($form_state['values']['field_noeud_parent_sitemap'][$langcode][0])
+    ){
+      $nid_parent_sitemap = $form_state['values']['field_noeud_parent_sitemap'][$langcode][0];
+    }else if(
+        isset($form_state['nid_mailbox'])
+        && isset($form_state['nid_mailbox']['#value'])
+    ){
+      $nid_parent_sitemap = $form_state['nid_mailbox']['#value'];
+    }else{
+
+      $nid_parent_sitemap = null;
+    }
+
+
+    if(isset($form_state['node'])){
+      $type = $form_state['node']->type;
+    }else{
+      $type = "email";
+    }
+
+
+    //charger $groupe_controlant
+    if(
+        ($noeud_parent_sitemap = node_load($nid_parent_sitemap))
+        && (
+            ($groupe_controlant = sitemap_get_groupe_controlant($noeud_parent_sitemap))
+            || ($groupe_controlant = sitemap_get_first_group_controleur($noeud_parent_sitemap))
+        )
+    ){
+      $enfants_markups = field_test_get_tree_markup($groupe_controlant->nid, $groupe_controlant->nid);
+      $markup_available = blablabla($name_file, $type, $ec, $groupe_controlant->nid, $groupe_controlant->nid);
+    }else{
+      $enfants_markups = "";
+      $groupe_controlant = false;
+      $markup_available = "";
+    }
+
+    $form[$name_file]['und']['#suffix'] = str_replace("<div class=\"avaliable-remp\"></div>", $markup_available, $form[$name_file]['und']['#suffix']);
+    $form[$name_file]['und']['#suffix'] = str_replace("<div class=\"enfants-markup-remp\"></div>", $enfants_markups, $form[$name_file]['und']['#suffix']);
+  }
+
+  return $form;
+}
+
+
+/**
+ * Formats the value array properly.
+ */
+function field_test_element_validate($element, &$form_state) {
+  $value = array();
+  if (!empty($element['#value'])) {
+    $ids = explode(',', $element['#value']);
+    $value = array();
+
+    foreach ($ids as $id) {
+      $value[] = array(
+        'target_id' => $id,
+      );
+    }
+  }
+
+  // Update the value of this element so the field can validate the product IDs.
+  form_set_value($element, $value, $form_state);
+}
+
+/**
+ * Implements hook_field_widget_settings_form().
+ */
+function field_test_field_widget_settings_form($field, $instance) {
+  $widget = $instance['widget'];
+  $settings = $widget['settings'];
+
+  $info = entity_get_info($field['settings']['target_type']);
+  $options = array(
+    'title' => t('Title'),
+    'default' => t('Default'),
+  );
+  foreach($info['view modes'] as $view_mode_id => $view_mode) {
+  if ($view_mode['custom settings']) {
+      $options += array(
+        $view_mode_id => t($view_mode['label']),
+      );
+     }
+  }
+
+  $form = array();
+
+  if ($widget['type'] == 'entityreference_dragdrop') {
+    $form['view_mode'] = array(
+      '#type' => 'select',
+      '#title' => t('View mode'),
+      '#default_value' => $settings['view_mode'],
+      '#options' => $options,
+      '#description' => t('Select one of available target entity view mode.'),
+    );
+
+    $form['available_entities_label'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Available entities label'),
+      '#default_value' => $settings['available_entities_label'],
+      '#description' => t('Type a label that will be displayed above block with available entities.')
+    );
+
+    $form['selected_entities_label'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Selected entities label'),
+      '#default_value' => $settings['selected_entities_label'],
+      '#description' => t('Type a label that will be displayed above block with selected entities.')
+    );
+
+    $form['display_filter'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Display item filter'),
+      '#default_value' => $settings['display_filter'],
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * Returns available options.
+ */
+function field_test_available_options($groupe = false, $doit_transmettre = false) {
+  // Build an array of available items in id => label format.
+
+  $tableau_des_groupes_de_contacts = array();
+  $available = array();
+  if($groupe){
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'groupe_de_contactes')
+      ->fieldCondition('og_group_ref', 'target_id', $groupe->nid)
+      ->propertyOrderBy('title', 'ASC');
+    if($doit_transmettre){
+      $query->fieldCondition('field_reed_permission_child', 'value', 1);
+    }
+    $result = $query->execute();
+    if(!empty($result)){
+      foreach($result['node'] as $nid_groupe => $retour){
+        $node_groupe = node_load($nid_groupe);
+        $tableau_des_groupes_de_contacts[$nid_groupe] = $node_groupe->title;
+      }
+    }
+    $t = 0;
+
+    /*foreach ($options as $bundle => $entities) {
+      foreach($entities as $id => $label) {
+        $is_available = TRUE;
+        foreach ($items as $item) {
+          if ($id == $item['target_id']) {
+            $is_available = FALSE;
+          }
+        }
+        if ($is_available && array_key_exists($id, $tableau_des_groupes_de_contacts)) {
+          $available[$id] = $label;
+        }
+      }
+    }*/
+  }
+  return $tableau_des_groupes_de_contacts;
+}
+
+/**
+ * Returns selected options.
+ */
+function field_test_get_selected_options($items, $options) {
+  // Build an array of selected items in id => label format.
+  $selected = array();
+  foreach ($items as $item) {
+    foreach ($options as $bundle => $entities) {
+      if (array_key_exists($item['target_id'], $entities)) {
+        $selected[$item['target_id']] =  $entities[$item['target_id']];
+      }
+    }
+  }
+  return $selected;
+}
+
+/**
+ * Builds HTML for dragable list of items.
+ */
+function field_test_build_html($options, $field, $instance, $ec, $classes = array()) {
+  $view_mode = $instance['widget']['settings']['view_mode'];
+  $target_type = $field['settings']['target_type'];
+  $list_items = array();
+
+  if ($view_mode != 'title') {
+    if (!empty($options)) {
+      $entities = entity_load($target_type, array_keys($options));
+      $renderable_entities = entity_view($target_type, $entities, $view_mode);
+      foreach ($renderable_entities[$target_type] as $id => $entity) {
+        if (is_array($entity)) {
+          $list_items[$id] = $entity;
+        }
+        else {
+          $list_items[$id] = array(
+            '#markup' => $options[$id],
+          );
+        }
+      }
+    }
+  }
+  else {
+    foreach ($options as $id => $label) {
+      $list_items[$id] = array(
+        '#markup' => $label,
+      );
+    }
+  }
+
+  // Build HTML to represent options.
+  $html = '<ul data-ec="' . $ec . '" class="entityreference-dragdrop ' . implode(" ", $classes) . '">';
+  foreach ($list_items as $id => $item) {
+    $html .= '<li data-ec="' . $ec . '" data-id="' . $id . '" data-label="'
+      . $options[$id] . '">' . drupal_render($item) . '</li>';
+  }
+  $html .= '</ul>';
+  return $html;
+}

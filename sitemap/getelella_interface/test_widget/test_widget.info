@@ -1,0 +1,6 @@
+name = Test widget
+description = "défiti un widget servant de tests"
+package = Sitemap
+core = 7.x
+dependencies[] = field
+;

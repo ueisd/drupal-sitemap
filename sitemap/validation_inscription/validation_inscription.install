@@ -1,0 +1,45 @@
+<?php
+function validation_inscription_schema() {
+  $schema['validation_incription'] = array(
+    'description' => 'The base table for observing viewed discussion messages.',
+    'fields' => array(
+      'uid'              => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
+      'nombretest'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
+    ),
+    'indexes' => array(
+      'uid'              => array('uid'),
+      'nombretest'       => array('uid'),
+    ),
+    // For documentation purposes only; foreign keys are not created in the
+    // database.
+    'foreign keys' => array(
+      'user_ext' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+       ),
+     ),
+    'primary key' => array('uid'),
+  );
+  return $schema;
+}
+
+function validation_inscription_update_7201() {
+  $spec = array(
+    'description' => 'temps de la requête',
+    'type' => 'int',
+    'size' => 'big',
+    'not null' => TRUE,
+    'default' => 0,
+  );
+  db_add_field('validation_incription', 'temps_req', $spec);
+}
+
+function validation_inscription_update_7202() {
+  $spec = array(
+    'description' => 'nombr occurences',
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+  );
+  db_add_field('validation_incription', 'nobr_req', $spec);
+}

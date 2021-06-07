@@ -1,0 +1,12 @@
+name = Sitemap
+description = "Define field and behavior for build and render site hierarchy"
+package = Petit Peuple
+core = 7.x
+dependencies[] = field
+dependencies[] = og_extras
+dependencies[] = og
+dependencies[] = og_ui
+
+; Information added by Drupal.org packaging script on 2014-01-14
+version = "7.x"
+core = "7.x"

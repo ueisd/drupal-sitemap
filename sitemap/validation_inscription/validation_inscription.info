@@ -1,0 +1,5 @@
+name = validation inscription
+description = "Ajoute une validation courielle à l'inscription et active le compte"
+package = Sitemap
+core = 7.x
+;

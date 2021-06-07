@@ -1,0 +1,131 @@
+<?php
+function validation_inscription_menu() {
+  $items = array();
+  $items['validation_compte/%/%/%'] = array(
+    'title' => 'Validation compte',
+    'page callback' => 'validation_inscription_page',
+    'page arguments' => array(1,2,3),
+    'access callback' => true,
+    'expanded' => TRUE,
+  );
+  $items['validation_compte/%/%/%/cancel'] = array(
+    'title' => 'Validation compte',
+    'page callback' => 'validation_inscription_page',
+    'page arguments' => array(1,2,3,4),
+    'access callback' => true,
+    'expanded' => TRUE,
+  );
+  return $items;
+}
+
+function validation_inscription_incrementer_nbr_requete($uid){
+      $nbr_req = db_select('validation_incription', "v")
+      ->fields("v", array("nobr_req"))
+      ->condition("v.uid", array($uid), '=')
+      ->execute()->fetchField();
+      if($nbr_req === false){
+        return false;
+      }
+      $nbr_req++;
+
+
+      db_update('validation_incription')
+      ->fields(array(
+        'nobr_req' => $nbr_req,
+      ))
+      ->condition("uid", array($uid), '=')
+      ->execute();
+      return $nbr_req;
+}
+
+function validation_inscription_cancel_user($uid){
+  user_delete($uid);
+  $num_deleted = db_delete('validation_incription')
+    ->condition('uid', $uid)
+    ->execute();
+}
+
+function validation_inscription_obtenir_nombretest($uid, $timestamp){
+  $req = db_select('validation_incription', "v")
+    ->fields("v", array("nombretest"))
+    ->condition("v.uid", array($uid), '=')
+    ->condition("v.temps_req", array($timestamp), '=')
+    ->execute()->fetchField();
+  return $req;
+}
+
+function validation_inscription_supprimer_user_pending_depuis($nb_sec){
+  $req = db_select('validation_incription', "v")
+    ->fields("v", array("uid"))
+    ->condition("v.temps_req", array(time()-$nb_sec), '<')
+    ->execute()->fetchAllkeyed();
+  foreach($req as $uid => $ligne){
+    validation_inscription_cancel_user($uid);
+  }
+
+}
+
+function validation_inscription_cronapi() {
+  $items = array();
+  $items['validation_inscription_clean_user_pending'] = array();
+  return $items;
+}
+
+/**
+ * The callback for the cron job,
+ */
+function validation_inscription_clean_user_pending($job) {
+  validation_inscription_supprimer_user_pending_depuis(259200);
+}
+
+function validation_inscription_page($uid, $timestamp, $nbr_test, $cancel = false){
+  $nbr_max_req = 11;
+  $t = 0;
+  if(ctype_digit($uid) && ctype_digit($timestamp) && ctype_digit($nbr_test) && $user_db = user_load($uid)){
+    $nombre_test_db = validation_inscription_obtenir_nombretest($uid, $timestamp);
+    if($user_db->status != 0){
+      drupal_set_message("l'utilisateur est déjà approuvé!");
+    }else if($nombre_test_db === false){
+      drupal_set_message("Aucune requete d'Activation n'existe");
+    }else if(($nombre_req_actuelles = validation_inscription_incrementer_nbr_requete($uid)) !== false
+        && $nombre_req_actuelles > $nbr_max_req
+    ){
+      drupal_set_message("trop de tentatives, les " . $nbr_max_req . " requêtes ont été un échec.");
+      //suprimer l'utilisateur;
+      validation_inscription_cancel_user($uid);
+    }else if ($nombre_test_db != $nbr_test){
+      $t = 0;
+      $reste = $nbr_max_req - $nombre_req_actuelles;
+      drupal_set_message("Échec de la tentative d'activation du compte. Il vous reste: " . $reste . "/" . $nbr_max_req . " requêtes.");
+    }else if(!$cancel){
+      $user_db->status = 1;
+      user_save($user_db);
+
+
+      global $user;
+      $user = user_load($uid);
+
+      $login_array = array ('name' => $uid->name);
+      user_login_finalize($login_array);
+
+      drupal_set_message("Utilisateur envoie d'être débloqué.");
+      drupal_goto('user/' . $uid);
+      $t = 0;
+
+    }else if($cancel == "cancel"){
+      validation_inscription_cancel_user($uid);
+      drupal_set_message("l'utilisateur a été supprimé selon votre demande!");
+    }
+
+    $t = 0;
+  }else if(!$user_db){
+    drupal_set_message("Utilisateur n'existe plus.");
+  }
+
+  return
+    '<div>'
+      . 'Page de validation.'
+    . '</div>';
+
+
+}

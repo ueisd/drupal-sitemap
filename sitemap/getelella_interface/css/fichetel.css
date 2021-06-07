@@ -1,0 +1,26 @@
+.node-fiche-d-appel-t-l-phonique {
+    background-color: #eaecff;
+    border-radius: 4px 4px 0 0;
+    box-shadow: none;
+    border-color: #e5e5e5 #eee #eee;
+    border-style: solid;
+    border-width: 1px 0;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.05) inset;
+    position: relative;
+    text-align:      left;
+    margin: 0px 10px 30px 10px;
+}
+.node-fiche-d-appel-t-l-phonique h2, .node-fiche-d-appel-t-l-phonique h3, 
+.node-fiche-d-appel-t-l-phonique h1{
+  text-align:      center;
+  background-color: #E9EBEE;
+}
+
+.node-fiche-d-appel-t-l-phonique .field-name-title {
+	margin-top: 0;
+}
+
+.node-fiche-d-appel-t-l-phonique * {
+    font-family: "OpenSans Regular","Montserrat","sans-serif","Source Sans Pro","Helvetica Neue",Helvetica,Arial,sans-serif;
+    font-size: 20px;
+}

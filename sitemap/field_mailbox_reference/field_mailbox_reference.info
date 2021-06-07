@@ -1,0 +1,6 @@
+name = Field mailbox reference
+description = "Définit un champ référençant les mailboxs"
+package = Sitemap
+core = 7.x
+dependencies[] = mailhandler
+;

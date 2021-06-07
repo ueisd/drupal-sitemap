@@ -1,0 +1,13 @@
+<?php
+function field_mailbox_reference_field_schema($field) {
+  $columns = array(
+    'mailbox' => array('type' => 'varchar', 'length' => 130, 'not null' => FALSE),
+  );
+  $indexes = array(
+    'mailbox' => array('mailbox'),
+  );
+  return array(
+    'columns' => $columns,
+    'indexes' => $indexes,
+  );
+}

@@ -1,0 +1,88 @@
+<?php
+define('ROLE_REFERENCE_FIELD_LABEL', 'Node Role Reference ok');
+define('ROLE_REFERENCE_FIELD_TYPE', 'node_role_reference_ok');
+define('ROLE_REFERENCE_FIELD_FORMATTER_PLAIN', 'node_role_reference_ok_field_formatter_plain');
+
+function role_reference_field_info() {
+  return array(
+    ROLE_REFERENCE_FIELD_TYPE => array(
+      'label' => t('Role refercence sitemap'),
+      'field_name' => ROLE_REFERENCE_FIELD_TYPE,
+      'description' => t('Stores the role(s) this entity references. This can be used for more finite access restrictions or selling access to certain roles.'),
+      'default_widget' => 'options_buttons',
+      'default_formatter' => ROLE_REFERENCE_FIELD_FORMATTER_PLAIN,
+      'property_type' => 'integer',
+    ),
+  );
+}
+
+function role_reference_options_list($field) {
+  $roles = og_roles("node", "transmeteur_de_permission"); /* fonction_de_groupe*/
+  return $roles;
+}
+/*
+ * function custommodule_update_7001() {
+  $permissions = array('view my custom entity');
+  foreach(array('anonymous user', 'authenticated user') as $role_name) {
+    $role = user_role_load_by_name($role_name);
+    user_role_grant_permissions($role->rid, $permissions);
+  }
+}
+ */
+
+
+/* Providing a field requires:*/
+     function role_reference_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors){
+      return;
+     }
+
+     function role_reference_field_is_empty($item, $field){
+        return empty($item['rid']);
+     }
+
+     //Defining a formatter for the field (the portion that outputs the field for display):
+     function role_reference_field_formatter_info(){
+       return array(
+        ROLE_REFERENCE_FIELD_FORMATTER_PLAIN => array(
+          'label' => t('Plain text'),
+          'description' => t("Display the name of the referenced role."),
+          'field types' => array(ROLE_REFERENCE_FIELD_TYPE),
+        ),
+      );
+   }
+
+
+
+
+
+     function role_reference_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display){
+        $result = array();
+        switch ($display['type']) {
+          case ROLE_REFERENCE_FIELD_FORMATTER_PLAIN:
+          default:
+            foreach ($items as $delta => $item) {
+              $role = og_role_load($item['rid']);
+              $result[$delta] = array(
+                '#prefix' => '<span class="og-role-reference-role">',
+                '#markup' => check_plain($role->name),
+                '#suffix' => '</span>',
+              );
+            }
+            break;
+        }
+        return $result;
+     }
+
+    function role_reference_field_widget_info_alter(&$info) {
+      // Offer up "checkboxes" and "radio buttons" as the field types.
+      $info['options_select']['field types'][] = ROLE_REFERENCE_FIELD_TYPE;
+      $info['options_buttons']['field types'][] = ROLE_REFERENCE_FIELD_TYPE;
+    }
+
+     // Defining a widget for the edit form:
+     /*function role_reference_field_widget_info(){
+
+     }
+     function role_reference_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element){
+
+     }*/

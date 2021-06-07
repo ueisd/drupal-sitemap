@@ -1,0 +1,200 @@
+<?php
+    function dnd_fields_field_info() {
+      return array(
+        'dnd_fields_ability' => array(
+          'label' => t('D&amp;D ability'),
+          'description' => t("This field stores PC ability scores"),
+          'settings' => array('allowed_values' => array(), 'allowed_values_function' => ''),
+          'default_widget' => 'dnd_fields_ability',
+          'default_formatter' => 'dnd_fields_ability', // This doesn't *have* to be the same name as default_widget's value, this is only coincidence
+        ),
+        'dnd_fields_skill' => array(
+          'label' => t('D&amp;D skill'),
+          'description' => t("This field stores PC skill values"),
+          'settings' => array('allowed_values' => array(), 'allowed_values_function' => ''),
+          'default_widget' => 'dnd_fields_skill',
+          'default_formatter' => 'dnd_fields_skill',
+        ),
+
+      );
+    }
+
+
+    function dnd_fields_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+      foreach ($items as $delta => $item) {
+        // ...
+      }
+    }
+
+    function dnd_fields_field_is_empty($item, $field) {
+      $temp = array_keys($field['columns']);
+      $key = array_shift($temp);
+      return empty($item[$key]);
+    }
+
+
+    function dnd_fields_field_widget_info() {
+      return array(
+        'dnd_fields_ability' => array(
+          'label' => t('D&D ability score'),
+          'field types' => array('dnd_fields_ability'),
+        ),
+        'dnd_fields_skill' => array(
+          'label' => t('D&D skill values'),
+          'field types' => array('dnd_fields_skill'),
+        ),
+      );
+    }
+
+
+    function dnd_fields_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+      switch ($instance['widget']['type']) {
+        case 'dnd_fields_ability':
+          $settings = $form_state['field'][$instance['field_name']][$langcode]['field']['settings'];
+
+          $fields = array(
+            'ability' => t('Ability'),
+            'score' => t('Score'),
+            'mod' => t('Modifier'),
+            'tempscore' => t('Temp score'),
+            'tempmod' => t('Temp modifier'),
+          );
+
+          $abilities = (!empty($field['settings']['abilities'])) ? explode("n", $field['settings']['abilities']) : array();
+
+          foreach ($fields as $key => $label) {
+            $value = isset($items[$delta][$key]) ? $items[$delta][$key] : '';
+            if (empty($value) && $key == 'ability') {
+              $value = $abilities[$delta];
+            }
+
+            $element[$key] = array(
+              '#attributes' => array('class' => array('edit-dnd-fields-ability'), 'title' => t(''), 'rel' => strtolower($abilities[$delta])),
+              '#type' => 'textfield',
+              '#size' => 3,
+              '#maxlength' => 3,
+              '#title' => $label,
+              '#default_value' => $value,
+              '#attached' => array(
+                'css' => array(drupal_get_path('module', 'dnd_fields') . '/dnd_fields.css'),
+                'js' => array(drupal_get_path('module', 'dnd_fields') . '/dnd_fields.js'),
+                ),
+              '#prefix' => '<div class="dnd-fields-ability-field dnd-fields-ability-' . $key . '-field dnd-fields-ability-' . $key . '-' . strtolower($abilities[$delta]) . '-field">',
+              '#suffix' => '</div>',
+            );
+            if ($key == 'ability') {
+              $element[$key]['#size'] = 10;
+              $element[$key]['#maxlength'] = 32;
+              if (arg(0) != 'admin') {
+                $element[$key]['#attributes'] = array('readonly' => 'readonly');
+              }
+            }
+          }
+          break;
+        case 'dnd_fields_skill':
+          $settings = $form_state['field'][$instance['field_name']][$langcode]['field']['settings'];
+
+          // Get the list of skills broken into an array, and split those elements into a
+          // multi-dimensional arrays
+          $skills_temp = (!empty($settings['skill'])) ? preg_split('/(rn?|n)/', $settings['skill']) : array();
+          $skills = array(0 => t('-Choose a skill-'));
+          foreach ($skills_temp as $skill) {
+            if(strpos($skill, '|') === FALSE) {
+              $skills[] = array($skill);
+            }
+            else {
+              $temp = explode('|', $skill);
+              $skills[$temp[0]] = $temp[1];
+            }
+          }
+
+          $element['skill'] = array(
+            '#attributes' => array('class' => array('edit-dnd-fields-skill'), 'title' => t('')),
+            '#type' => 'select',
+            '#options' => $skills,
+            '#title' => t('Skill name'),
+            '#description' => t('Choose a skill you wish to allocate ranks to.'),
+            '#attached' => array(
+              'css' => array(drupal_get_path('module', 'dnd_fields') . '/dnd_fields.css'),
+              'js' => array(drupal_get_path('module', 'dnd_fields') . '/dnd_fields.js'),
+            ),
+            '#prefix' => '<div class="dnd-fields-skill-field dnd-fields-skill-skill-field">',
+            '#suffix' => '</div>',
+          );
+          $element['ranks'] = array(
+            '#attributes' => array('class' => array('edit-dnd-fields-ranks'), 'title' => t('')),
+            '#type' => 'textfield',
+            '#size' => 3,
+            '#maxlength' => 3,
+            '#title' => t('Skill ranks'),
+            '#prefix' => '<div class="dnd-fields-skill-field dnd-fields-skill-ranks-field">',
+            '#suffix' => '</div>',
+          );
+          // Loop through all the element children and set a default value if we have one. Then set HTML wrappers.
+          foreach (element_children($element) as $element_key) {
+            $value = isset($items[$delta][$element_key]) ? $items[$delta][$element_key] : '';
+            $element[$element_key]['#default_value'] = $value;
+          }
+          break;
+
+      }
+      return $element;
+    }
+
+
+    function dnd_fields_field_formatter_info() {
+      return array(
+        'dnd_fields_ability' => array(
+          'label' => t('Ability scores'),
+          'field types' => array('dnd_fields_ability'),
+        ),
+        'dnd_fields_skill' => array(
+          'label' => t('Skill fields'),
+          'field types' => array('dnd_fields_skill'),
+        ),
+      );
+    }
+
+
+    function dnd_fields_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+      $element = array();
+
+      switch ($display['type']) {
+        case 'dnd_fields_ability':
+          $headers = array(
+            t('Skill'),
+            t('Score'),
+            t('Modifier'),
+            t('Temp score'),
+            t('Temp modifier'),
+          );
+
+          $element[0]['#theme'] = 'table';
+          $element[0]['#data'] = array('header' => $headers, 'rows' => $items);
+          break;
+
+        case 'dnd_fields_skill':
+          // Set the skill name to the human readable name instead of the internal machine name.
+          $skills = dnd_fields_skill_list_array(explode("n", $field['settings']['skill']));
+          foreach ($items as $delta => $item) {
+            $items[$delta]['skill'] = $skills[$item['skill']];
+          }
+
+          $headers = array(
+            t('Skill'),
+            t('Ranks'),
+          );
+
+          $element[0]['#theme'] = 'table';
+          $element[0]['#data'] = array('header' => $headers, 'rows' => $items);
+
+          break;
+      }
+      return $element;
+    }
+
+
+
+
+
+

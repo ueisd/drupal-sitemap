@@ -1,0 +1,99 @@
+<?php
+
+/**
+ * Implements hook_field_schema()
+ */
+function permission_reference_field_schema($field) {
+  $schema['columns'] = array(
+    'permission' => array(
+      'type' => 'varchar',
+      'description' => 'The permission',
+      'length' => 255,
+      'not null' => TRUE,
+    ),
+  );
+  /*$schema['indexes'] = array(
+    'rid' => array('rid')
+  );*/
+  /*$schema['foreign keys'] = array(
+    'group_role_fk' => array(
+      'table' => 'og_role',
+      'columns' => array(
+        'rid' => 'rid',
+      ),
+    ),
+  );*/
+  return $schema;
+}
+
+function permission_reference_install() {
+  $schema = drupal_get_schema('og_role');
+  db_add_field('og_role', 'parent_rid', $schema['fields']['parent_rid']);
+  db_add_field('og_role', 'si_heriter', $schema['fields']['si_heriter']);
+}
+
+function permission_reference_schema_alter(&$schema) {
+  // Add field to existing schema.
+  $schema['og_role']['fields']['parent_rid'] = array(
+    'type' => 'int',
+    'default' => 0,
+     'size' => 'normal',
+    'description' => 'Rid of the role that it inherit',
+  );
+  $schema['og_role']['fields']['si_heriter'] = array(
+    'description' => '0 pas héiter 1 hériter',
+    'type' => 'int',
+    'size' => 'tiny',
+    'not null' => TRUE,
+    'default' => 0,
+  );
+  $schema['og_role']['foreign keys'] = array(
+      'parent_rid' => array(
+        'table' => 'og_role',
+        'columns' => array('parent_rid' => 'rid'),
+      ),
+  );
+  /*$schema['og_role']['indexes'] = array(
+    'parent_rid' => array('parent_rid'),
+  );
+  $schema['og_role']['foreign keys'] = array(
+    'parent_role' => array(
+      'table' => 'og_role',
+      'columns' => array('parent_rid' => 'rid'),
+    )
+  );*/
+}
+
+function permission_reference_uninstall() {
+  db_drop_field('og_role', 'parent_rid');
+  db_drop_field('og_role', 'si_heriter');
+}
+
+
+/**
+ * Delete {system} records for long-lost modules.
+ */
+function permission_reference_update_7100() {
+  $modules = array(
+    'bootstrap_social',
+    'panels_extra_bootsrap',
+  );
+  db_delete('system')
+    ->condition('name', $modules, 'IN')
+    ->condition('type', 'module')
+    ->execute();
+}
+
+/**
+ * Delete {system} records for long-lost modules.
+ */
+function permission_reference_update_7200() {
+  $modules = array(
+    '_vos_toques_partie_2',
+    'hello',
+  );
+  db_delete('system')
+    ->condition('name', $modules, 'IN')
+    ->condition('type', 'module')
+    ->execute();
+}
